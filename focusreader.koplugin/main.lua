@@ -1,0 +1,655 @@
+-- Focus Reader v1.0.1: offline reading-focus accessibility tool for KOReader.
+-- Native CRe selection for gentle color highlight; pure black masking
+-- for Reading Window / Reading Guide. No network, audio, or annotations.
+local Blitbuffer = require("ffi/blitbuffer")
+local DataStorage = require("datastorage")
+local Device = require("device")
+local Geom = require("ui/geometry")
+local LuaSettings = require("luasettings")
+local UIManager = require("ui/uimanager")
+local Widget = require("ui/widget/widget")
+local _ = require("gettext")
+
+local plugin_dir = debug.getinfo(1, "S").source:match("^@(.*/)") or "./"
+local Logic = dofile(plugin_dir .. "logic.lua")
+local Screen = Device.screen
+
+local FocusReader = Widget:extend{
+    name = "focusreader",
+    is_doc_only = true,
+    enabled = false,
+    supported = false,
+    line_count = 3,         -- Native color mode; existing v0.4.2 setting.
+    opacity = 56,         -- Fixed original default; never read old opacity preferences.
+    legacy_line_count = 3, -- Independent Spotlight Focus reading window.
+    spotlight_layout = "window", -- window (above & below) or guide (below only).
+    step_mode = "line",
+    refresh_mode = "focused", -- fixed smooth area refresh; no experimental modes
+    style = "color",
+    color_name = "yellow",
+    index = 1,
+}
+
+function FocusReader:init()
+    self.settings = LuaSettings:open(DataStorage:getSettingsDir() .. "/focusreader.lua")
+    self.line_count = Logic.setting(self.settings:readSetting("line_count"), 1, 5, 3)
+    -- Fixed gentle highlight strength: 56% RGB blending over white.
+    -- Ignore previous opacity/intensity keys even if still on disk; the user
+    -- chose one stable highlight strength, not a hidden adjustable option.
+    self.opacity = 56
+    -- The modes keep separate line-count preferences.
+    self.legacy_line_count = Logic.setting(
+        self.settings:readSetting("legacy_line_count"), 1, 5, 3)
+    -- Ignore old legacy_intensity preferences, including
+    -- settings saved below 100: Spotlight Focus is now ALWAYS fully black.
+    self.spotlight_layout = self.settings:readSetting("spotlight_layout") == "guide"
+        and "guide" or "window"
+    self.step_mode = self.settings:readSetting("step_mode") == "block" and "block" or "line"
+    -- One refresh path only, regardless of previously saved experiment keys.
+    -- Never start precise/wide_wait, screen-wide or accelerated refreshes.
+    self.refresh_mode = "focused"
+    self.style = self.settings:readSetting("style") == "mask" and "mask" or "color"
+    local chosen = self.settings:readSetting("color_name")
+    self.color_name = ({yellow=true, orange=true, green=true, cyan=true,
+        blue=true, pink=true})[chosen] and chosen or "yellow"
+    self.lines, self.areas = {}, {}
+    self._native_bounds = nil
+    -- Deliberately do not auto-start a previous session.
+end
+
+function FocusReader:isSupported()
+    local doc = self.ui and self.ui.document
+    return self.ui and self.ui.rolling and doc
+        and type(doc.getTextFromPositions) == "function"
+        and type(doc.getCurrentPage) == "function"
+        and type(doc.getCurrentPos) == "function"
+        and type(doc.getVisiblePageCount) == "function"
+        and type(doc.getPageCount) == "function"
+        and self.view ~= nil
+end
+
+-- Only the base EPUB/rolling APIs decide whether the reader can register.
+-- The newer selection API is optional: never hide the menu if unavailable.
+function FocusReader:canUseNativeColor()
+    local doc = self.ui and self.ui.document
+    if not doc or type(doc.getTextFromXPointers) ~= "function"
+            or type(doc.clearSelection) ~= "function" then return false end
+    local ok, available = pcall(function()
+        return doc._document ~= nil and type(doc._document.setStringProperty) == "function"
+    end)
+    return ok and available == true
+end
+
+function FocusReader:onReaderReady()
+    self.supported = not not self:isSupported()
+    -- Always add the menu for an open book, even if a specific highlighting
+    -- backend cannot be used. A visible menu can provide a useful explanation.
+    if self.ui and self.ui.menu then
+        self.ui.menu:registerToMainMenu(self)
+    end
+    if not self.supported then return end
+    self.view:registerViewModule("focusreader", self)
+    self.location = self:getLocation()
+end
+
+function FocusReader:getLocation()
+    if not self.supported or not self.ui.document then return nil end
+    if self.view.view_mode == "scroll" then return self.ui.document:getCurrentPos() end
+    return self.ui.document:getCurrentPage(true)
+end
+
+function FocusReader:getViewport()
+    local height = Screen:getHeight()
+    if self.view.footer_visible and self.view.footer then
+        height = height - self.view.footer:getHeight()
+    end
+    return { x = 0, y = 0, w = Screen:getWidth(), h = math.max(0, height) }
+end
+
+function FocusReader:getPageAreas(viewport)
+    local doc = self.ui.document
+    if self.view.view_mode == "scroll" or doc:getVisiblePageCount() == 1 then
+        return { viewport }
+    end
+    local half = math.floor(viewport.w / 2)
+    local areas = { { x = 0, y = 0, w = half, h = viewport.h } }
+    if doc:getCurrentPage(true) < doc:getPageCount(true) then
+        areas[#areas + 1] = { x = half, y = 0, w = viewport.w - half, h = viewport.h }
+    end
+    return areas
+end
+
+function FocusReader:refreshLines(reset_index)
+    self.lines = {}
+    self.areas = {}
+    if not self.supported or not self.ui.document then return end
+    self.location = self:getLocation()
+    if not self.enabled then return end
+    local viewport = self:getViewport()
+    local areas = self:getPageAreas(viewport)
+    self.areas = areas
+    local end_area = areas[#areas]
+    local ok, text_boxes = pcall(self.ui.document.getTextFromPositions, self.ui.document,
+        { x = viewport.x, y = viewport.y },
+        { x = end_area.x + end_area.w, y = end_area.y + end_area.h }, true)
+    if ok and text_boxes and type(text_boxes.sboxes) == "table" then
+        for _, area in ipairs(areas) do
+            for _, line in ipairs(Logic.normaliseLines(text_boxes.sboxes, area)) do
+                self.lines[#self.lines + 1] = line
+            end
+        end
+    end
+    local active_count = self:getFocusLineCount()
+    if reset_index then
+        self.index = self._page_direction == -1
+            and Logic.maxStart(self.lines, active_count) or 1
+    else
+        self.index = math.min(self.index, Logic.maxStart(self.lines, active_count))
+    end
+end
+
+function FocusReader:getFocusLineCount()
+    return self.style == "mask" and self.legacy_line_count or self.line_count
+end
+
+function FocusReader:getSlot()
+    return Logic.slot(self.lines, self.index, self:getFocusLineCount())
+end
+
+-- Solid RGB is what the EPUB engine accepts for a native selection.
+-- Blending toward the typical white page background before passing that RGB
+-- color is an *opacity simulation*, not actual alpha compositing over content.
+-- Color-native highlighting retains the no-black-flash advantage.
+local PALETTE = {
+    yellow = { 255, 215, 35 }, orange = { 255, 165, 55 },
+    green = { 127, 212, 116 }, cyan = { 100, 214, 225 },
+    blue = { 113, 166, 240 }, pink = { 235, 130, 189 },
+}
+
+function FocusReader:getNativeColor()
+    local base = PALETTE[self.color_name] or PALETTE.yellow
+    local alpha = self.opacity / 100
+    local function channel(v)
+        return math.floor(255 + (v - 255) * alpha + 0.5)
+    end
+    return string.format("#%02X%02X%02X",
+        channel(base[1]), channel(base[2]), channel(base[3]))
+end
+
+function FocusReader:setNativeSelectionColor()
+    if not self.ui or not self.ui.document or not self.ui.document._document then return false end
+    return pcall(self.ui.document._document.setStringProperty,
+        self.ui.document._document, "crengine.highlight.selection.color", self:getNativeColor())
+end
+
+function FocusReader:restoreNativeSelectionColor()
+    -- Delegate restoration to KOReader rather than changing any global settings.
+    if self.ui and self.ui.highlight and self.ui.highlight.setSelectionColor then
+        pcall(self.ui.highlight.setSelectionColor, self.ui.highlight)
+    end
+end
+
+function FocusReader:clearNativeSelection()
+    self._native_bounds = nil
+    if self.ui and self.ui.document and self.ui.document.clearSelection then
+        pcall(self.ui.document.clearSelection, self.ui.document)
+    end
+end
+
+-- Use CRe's native selection drawing API instead of a translucent
+-- screen-wide overlay.
+-- One selection spans the visible lines, with text-coordinate endpoints.
+function FocusReader:applyNativeSelection()
+    if not self.enabled or self.style ~= "color" then return false end
+    local first = self.lines[self.index]
+    if not first then
+        self:clearNativeSelection()
+        return false
+    end
+    local last = first
+    for j = self.index + 1, math.min(#self.lines, self.index + self.line_count - 1) do
+        if self.lines[j].area ~= first.area then break end
+        last = self.lines[j]
+    end
+    local start_pos = {
+        x = math.floor(first.x + math.min(2, first.w / 3)),
+        y = math.floor(first.y + first.h / 2),
+    }
+    local end_pos = {
+        x = math.floor(last.x + math.max(1, last.w - 2)),
+        y = math.floor(last.y + last.h / 2),
+    }
+    local doc = self.ui.document
+    local ok, range = pcall(doc.getTextFromPositions, doc,
+        start_pos, end_pos, true)
+    if not ok or type(range) ~= "table" or not range.pos0 or not range.pos1 then
+        self:clearNativeSelection()
+        return false
+    end
+    -- Explicitly retire the old CRe selection before installing the new one.
+    -- Never repaint between clearSelection() and getTextFromXPointers(): this
+    -- ensures a single atomic visible update with no white/black intermediate.
+    -- Without the clear, segmented selection fragments near the old endpoint
+    -- can remain rendered after the reading window advances or reverses.
+    self:clearNativeSelection()
+    local selected = pcall(doc.getTextFromXPointers, doc, range.pos0, range.pos1, true)
+    if not selected then
+        self:clearNativeSelection()
+        return false
+    end
+    -- The native selection can extend slightly beyond the geometry of the
+    -- three-line reading window. Track CRe's real text boxes to refresh the
+    -- previous and new endpoints as well as the core focus window.
+    self._native_bounds = Logic.selectionBounds(range.sboxes, first.area)
+    return true
+end
+
+-- Only solid black paint is used in Spotlight Focus. No alpha blending,
+-- gray artifacts or adjustable darkness settings remain in this mode.
+function FocusReader:shade(bb, x, y, w, h)
+    w, h = math.floor(w), math.floor(h)
+    if w <= 0 or h <= 0 then return end
+    return bb:paintRect(x, y, w, h, Blitbuffer.COLOR_BLACK)
+end
+
+function FocusReader:paintTo(bb, x, y)
+    if not self.supported or not self.enabled or self.style ~= "mask" then return end
+    local slot = self:getSlot()
+    if not slot then return end -- No text: do not blackout an image-only page.
+    for _, area in ipairs(self.areas) do
+        if area == slot.area then
+            local top = math.max(area.y, math.min(slot.y, area.y + area.h))
+            local bottom = math.max(area.y, math.min(slot.y + slot.h, area.y + area.h))
+            if self.spotlight_layout == "window" then
+                -- Reading Window: keep only N lines clear; above AND below
+                -- are black, as in legacy v0.5.
+                self:shade(bb, x + area.x, y + area.y, area.w, top - area.y)
+            end
+            -- Reading Guide: leave everything already read above the focus
+            -- line completely untouched, like sliding a sheet down a page.
+            self:shade(bb, x + area.x, y + bottom,
+                area.w, area.y + area.h - bottom)
+        elseif self.spotlight_layout == "window" or area.x > slot.area.x then
+            -- Two-page layout: in Guide, leave earlier pages visible and
+            -- black out not-yet-read right-hand pages.
+            self:shade(bb, x + area.x, y + area.y, area.w, area.h)
+        end
+    end
+end
+
+-- A *single* medium-fidelity update for the union of the old and new focus
+-- windows. Never submit top/bottom strips separately: on the Kobo MTK e-ink
+-- driver those can update at different moments and visibly leave stale bars.
+-- Never use "fast" or "a2" for greyscale dimming: they lose grey detail.
+-- 'ui' does not request a deliberate black-flash or count toward KOReader's
+-- automatic periodic full-refresh promotion. The device's panel may still
+-- perform waveform transitions that aren't under plugin control.
+function FocusReader:redraw(whole_view, previous_slot, previous_native_bounds)
+    if not self.view or not self.view.dialog then return end
+    local region
+    if not whole_view and previous_slot then
+        local new_slot = self:getSlot()
+        local combined
+        if self.style == "mask" and self.spotlight_layout == "guide" then
+            -- Only ONE horizontal boundary changes when exposing each line.
+            -- A single narrow nonflashing region reduces unnecessary e-ink
+            -- transitions compared with the moving two-edge Reading Window.
+            combined = Logic.guideChangedBounds(previous_slot, new_slot, 10)
+        else
+            combined = Logic.changedBounds(previous_slot, new_slot, 8)
+        end
+        if self.style == "color" then
+            -- Stable full-width smooth UI refresh, including both selections.
+            local native_region = Logic.changedBounds(
+                previous_native_bounds, self._native_bounds, 12)
+            combined = Logic.unionRefresh(combined, native_region)
+        end
+        if combined then region = Geom:new(combined) end
+    end
+    UIManager:setDirty(self.view.dialog, "ui", region)
+end
+
+-- Local interception: only the current document's ReaderRolling instance.
+-- Forward the original page-turn implementation when the spotlight reaches
+-- its end; restore the exact original function on Stop or document close.
+function FocusReader:installTurnHook()
+    local rolling = self.ui.rolling
+    if self._turn_wrapper then return end
+    self._original_turn = rolling.onGotoViewRel
+    self._hooked_rolling = rolling
+    local plugin = self
+    self._turn_wrapper = function(controller, difference, ...)
+        if controller ~= rolling or not plugin.enabled or type(difference) ~= "number"
+                or math.abs(difference) ~= 1 then
+            return plugin._original_turn(controller, difference, ...)
+        end
+        return plugin:moveFocus(difference)
+    end
+    rolling.onGotoViewRel = self._turn_wrapper
+end
+
+function FocusReader:restoreTurnHook()
+    if self._hooked_rolling and self._hooked_rolling.onGotoViewRel == self._turn_wrapper then
+        self._hooked_rolling.onGotoViewRel = self._original_turn
+    end
+    self._turn_wrapper = nil
+    self._hooked_rolling = nil
+    self._original_turn = nil
+end
+
+function FocusReader:turnPage(direction)
+    local before = self:getLocation()
+    self._page_direction = direction
+    local result = self._original_turn(self.ui.rolling, direction)
+    -- Some versions send PageUpdate during the turn; others may defer it.
+    local after = self:getLocation()
+    if after ~= before and self.location ~= after then
+        -- A platform that did not synchronously emit PageUpdate still needs
+        -- the new page's text boxes. Avoid a duplicate repaint otherwise.
+        self:refreshLines(true)
+        if self.style == "color" then self:applyNativeSelection() end
+        self:redraw(false)
+    elseif after == before and self.style == "color" then
+        -- End-of-book or failed turn: restore our visible temporary selection.
+        self:applyNativeSelection()
+        self:redraw(false)
+    end
+    self._page_direction = nil
+    return result == nil and true or result
+end
+
+function FocusReader:moveFocus(direction)
+    if not self.enabled then return false end
+    local active_count = self:getFocusLineCount()
+    local step = self.step_mode == "block" and active_count or 1
+    local index, page_direction = Logic.advance(self.lines, self.index,
+        active_count, direction, step)
+    if page_direction then return self:turnPage(page_direction) end
+    if index ~= self.index then
+        local old_slot = self:getSlot()
+        local old_native_bounds = self._native_bounds
+        self.index = index
+        if self.style == "color" then self:applyNativeSelection() end
+        self:redraw(false, old_slot, old_native_bounds)
+    end
+    return true
+end
+
+function FocusReader:start()
+    if not self.supported then
+        UIManager:show(require("ui/widget/infomessage"):new{
+            text = _("Focus Reader supports reflowable books such as EPUB."),
+        })
+        return
+    end
+    if self.enabled then return end
+    if self.style == "color" and not self:canUseNativeColor() then
+        UIManager:show(require("ui/widget/infomessage"):new{
+            text = _("This KOReader build does not expose the native selection API. Choose Spotlight Focus instead."),
+        })
+        return
+    end
+    self.enabled = true
+    self._page_direction = nil
+    self:refreshLines(true)
+    if self.style == "color" then
+        self:setNativeSelectionColor()
+        self:applyNativeSelection()
+    end
+    self:installTurnHook()
+    self:redraw(true)
+end
+
+function FocusReader:stop(skip_redraw)
+    local was_enabled = self.enabled
+    self.enabled = false
+    self._page_direction = nil
+    self:restoreTurnHook()
+    if was_enabled and self.style == "color" then
+        self:clearNativeSelection()
+        self:restoreNativeSelectionColor()
+    end
+    if was_enabled and not skip_redraw then self:redraw(true) end
+end
+
+-- Color and legacy focus windows are intentionally separate. Preserve the
+-- original setLines() name for existing bindings/settings and native mode.
+function FocusReader:setLines(count)
+    self.line_count = Logic.setting(count, 1, 5, 3)
+    self.settings:saveSetting("line_count", self.line_count)
+    if self.enabled and self.style == "color" then
+        self.index = math.min(self.index, Logic.maxStart(self.lines, self.line_count))
+        self:applyNativeSelection()
+        self:redraw(true)
+    end
+end
+
+function FocusReader:setLegacyLines(count)
+    self.legacy_line_count = Logic.setting(count, 1, 5, 3)
+    self.settings:saveSetting("legacy_line_count", self.legacy_line_count)
+    if self.enabled and self.style == "mask" then
+        self.index = math.min(self.index,
+            Logic.maxStart(self.lines, self.legacy_line_count))
+        self:redraw(true)
+    end
+end
+
+function FocusReader:setSpotlightLayout(layout)
+    layout = layout == "guide" and "guide" or "window"
+    if self.spotlight_layout == layout then return end
+    self.spotlight_layout = layout
+    self.settings:saveSetting("spotlight_layout", layout)
+    if self.enabled and self.style == "mask" then self:redraw(true) end
+end
+
+function FocusReader:setColor(name)
+    if not PALETTE[name] then return end
+    self.color_name = name
+    self.settings:saveSetting("color_name", name)
+    if self.enabled and self.style == "color" then
+        self:setNativeSelectionColor()
+        self:applyNativeSelection()
+        self:redraw(true)
+    end
+end
+
+function FocusReader:setStyle(style)
+    style = style == "mask" and "mask" or "color"
+    if self.style == style then return end
+    -- On some KOReader/device builds native selection is unavailable. Never
+    -- replace a working Spotlight session with a blank color highlight.
+    if self.enabled and style == "color" and not self:canUseNativeColor() then
+        UIManager:show(require("ui/widget/infomessage"):new{
+            text = _("Native color highlighting is unavailable in this KOReader build. Spotlight Focus still works."),
+        })
+        return
+    end
+    if self.enabled and self.style == "color" then
+        self:clearNativeSelection()
+        self:restoreNativeSelectionColor()
+    end
+    self.style = style
+    self.settings:saveSetting("style", style)
+    if self.enabled then
+        -- Changing modes can also change the active focus window size.
+        self.index = math.min(self.index,
+            Logic.maxStart(self.lines, self:getFocusLineCount()))
+    end
+    if self.enabled and style == "color" then
+        self:setNativeSelectionColor()
+        self:applyNativeSelection()
+    end
+    if self.enabled then self:redraw(true) end
+end
+
+function FocusReader:setStepMode(mode)
+    self.step_mode = mode == "block" and "block" or "line"
+    self.settings:saveSetting("step_mode", self.step_mode)
+end
+
+function FocusReader:onPageUpdate()
+    if not self.enabled then return end
+    local new_location = self:getLocation()
+    local changed = new_location ~= self.location
+    self:refreshLines(changed)
+    if self.style == "color" then self:applyNativeSelection() end
+    if changed then self:redraw(false) end
+end
+FocusReader.onPosUpdate = FocusReader.onPageUpdate
+
+function FocusReader:onScreenResize()
+    if not self.enabled then return end
+    self:refreshLines(false)
+    if self.style == "color" then self:applyNativeSelection() end
+    self:redraw(true)
+end
+
+function FocusReader:onReaderFooterVisibilityChange()
+    if not self.enabled then return end
+    self:refreshLines(false)
+    if self.style == "color" then self:applyNativeSelection() end
+    self:redraw(true)
+end
+
+function FocusReader:onCloseDocument()
+    self:stop(true)
+    self.supported = false
+end
+
+function FocusReader:onFlushSettings()
+    self.settings:flush()
+end
+FocusReader.onSaveSettings = FocusReader.onFlushSettings
+
+-- Called by checkmarked menu items. KOReader deliberately keeps checked
+-- selections open unless the callback closes them. Close BEFORE repainting
+-- the page, so the reader is visible when highlighting/masking is redrawn.
+-- Using the TouchMenu instance supplied to callbacks is the normal path;
+-- fall back to ReaderMenu when a different KOReader menu version does not
+-- supply an instance.
+function FocusReader:closeSettingsMenu(menu)
+    -- ReaderMenu:onTapCloseMenu closes *both* the main TouchMenu and the
+    -- bottom configuration menu. Prefer it when available so neither bar
+    -- remains over the book after selecting a checked option.
+    if self.ui and self.ui.menu
+            and type(self.ui.menu.onTapCloseMenu) == "function" then
+        self.ui.menu:onTapCloseMenu()
+    elseif menu and type(menu.closeMenu) == "function" then
+        menu:closeMenu()
+    end
+end
+
+function FocusReader:addToMainMenu(menu_items)
+    -- Keep the top-level menu focused on reading, not refresh internals.
+    local color_line_items, spotlight_line_items = {}, {}
+    for n = 1, 5 do
+        local count = n
+        local label = tostring(count) .. (count == 1 and _(" line") or _(" lines"))
+        color_line_items[#color_line_items + 1] = {
+            text = label,
+            checked_func = function() return self.line_count == count end,
+            check_callback_closes_menu = true,
+            callback = function(menu)
+                self:closeSettingsMenu(menu)
+                self:setLines(count)
+            end,
+        }
+        spotlight_line_items[#spotlight_line_items + 1] = {
+            text = label,
+            checked_func = function() return self.legacy_line_count == count end,
+            check_callback_closes_menu = true,
+            callback = function(menu)
+                self:closeSettingsMenu(menu)
+                self:setLegacyLines(count)
+            end,
+        }
+    end
+
+    local color_items = {}
+    for color_index, color_entry in ipairs({
+        {"Yellow", "yellow"}, {"Orange", "orange"},
+        {"Green", "green"}, {"Cyan", "cyan"},
+        {"Blue", "blue"}, {"Pink", "pink"},
+    }) do
+        local label, value = color_entry[1], color_entry[2]
+        color_items[#color_items + 1] = {
+            text = _(label),
+            checked_func = function() return self.color_name == value end,
+            check_callback_closes_menu = true,
+            callback = function(menu)
+                self:closeSettingsMenu(menu)
+                self:setColor(value)
+            end,
+        }
+    end
+
+    menu_items.focusreader = {
+        text = _("Focus Reader"),
+        sorting_hint = "tools",
+        sub_item_table = {
+            {
+                text_func = function()
+                    return self.enabled and _("Stop Focus Reader") or _("Start Focus Reader")
+                end,
+                keep_menu_open = true,
+                callback = function(menu)
+                    self:closeSettingsMenu(menu)
+                    if self.enabled then self:stop() else self:start() end
+                end,
+            },
+            {
+                text = _("Reading mode"),
+                sub_item_table = {
+                    {
+                        text = _("Highlight Focus"),
+                        checked_func = function() return self.style == "color" end,
+                        check_callback_closes_menu = true,
+                        callback = function(menu)
+                            self:closeSettingsMenu(menu)
+                            self:setStyle("color")
+                        end,
+                    },
+                    {
+                        text = _("Spotlight Focus: Reading Window"),
+                        checked_func = function()
+                            return self.style == "mask" and self.spotlight_layout == "window"
+                        end,
+                        check_callback_closes_menu = true,
+                        callback = function(menu)
+                            self:closeSettingsMenu(menu)
+                            self:setSpotlightLayout("window")
+                            self:setStyle("mask")
+                        end,
+                    },
+                    {
+                        text = _("Spotlight Focus: Reading Guide"),
+                        checked_func = function()
+                            return self.style == "mask" and self.spotlight_layout == "guide"
+                        end,
+                        check_callback_closes_menu = true,
+                        callback = function(menu)
+                            self:closeSettingsMenu(menu)
+                            self:setSpotlightLayout("guide")
+                            self:setStyle("mask")
+                        end,
+                    },
+                },
+            },
+            {
+                text = _("Highlight Focus"),
+                sub_item_table = {
+                    { text = _("Color"), sub_item_table = color_items },
+                    { text = _("Focused lines"), sub_item_table = color_line_items },
+                },
+            },
+            {
+                text = _("Spotlight Focus"),
+                sub_item_table = {
+                    { text = _("Focused lines"), sub_item_table = spotlight_line_items },
+                },
+            },
+        },
+    }
+end
+
+return FocusReader
