@@ -23,6 +23,7 @@ package.preload['ui/renderimage']=function()
         if path:find('missing') then return nil end
         return {getWidth=function() return width end,
             getHeight=function() return height end,
+            getType=function() return 'RGB32' end,
             free=function() image_frees=image_frees+1 end}
     end}
 end
@@ -34,7 +35,11 @@ package.preload['apps/filemanager/filemanagerutil']=function()
         callback('/test/koreader/screensavers/forest.png')
     end}
 end
-package.preload['ffi/blitbuffer']=function() return {COLOR_BLACK='BLACK',COLOR_WHITE='WHITE', ColorRGB32=function(r,g,b,a) return {r=r,g=g,b=b,a=a} end} end
+package.preload['ffi/blitbuffer']=function() return {
+    COLOR_BLACK='BLACK',COLOR_WHITE='WHITE',
+    TYPE_BBRGB32='RGB32',TYPE_BB8A='BB8A',
+    ColorRGB32=function(r,g,b,a) return {r=r,g=g,b=b,a=a} end
+} end
 package.preload['device']=function() return {screen={getWidth=function() return 600 end, getHeight=function() return 900 end}} end
 package.preload['ui/geometry']=function() return {new=function(_,v) return v end} end
 package.preload['luasettings']=function()
@@ -383,46 +388,39 @@ check(chooser_filter('foo.PNG') and chooser_filter('image.jpeg')
     and not chooser_filter('document.pdf'), 'chooser filters supported image formats')
 instance:setSpotlightImageBaseColor('black')
 instance:start()
-local image_blits, image_tones, black_backings = {}, {}, 0
+local image_blits, black_backings = {}, 0
 local image_bb={
-    blitFrom=function(_,image,dx,dy,sx,sy,w,h)
+    pmulalphablitFrom=function(_,image,dx,dy,sx,sy,w,h)
         image_blits[#image_blits+1]={x=dx,y=dy,w=w,h=h}
     end,
-    blendRectRGB32=function(_,x,y,w,h,color)
-        image_tones[#image_tones+1]=color
-    end,
+    blitFrom=function() error('RGBA image must not be flattened by plain blit') end,
     paintRect=function(_,x,y,w,h,color)
         check(color=='BLACK','custom image defaults to black underlay')
         black_backings=black_backings+1
     end,
 }
 instance:paintTo(image_bb,0,0)
-check(#image_blits>0 and image_loads==1,'custom image rendered and decoded once')
-check(#image_tones>0 and image_tones[1].r==0 and image_tones[1].a==140,
-    'opaque image receives visible dark overlay')
+check(#image_blits>0 and image_loads==1,
+    'RGBA background uses premultiplied-alpha compositing')
+check(black_backings>0,'black backing painted behind transparency')
 instance:paintTo(image_bb,0,0)
 check(image_loads==1,'subsequent focus repaints reuse decoded image')
 instance:setSpotlightImageBaseColor('white')
 check(instance.spotlight_image_base_color=='white' and
     stored.spotlight_image_base_color=='white','image backing color saved separately')
-local white_underlay, white_tones, white_blits = 0, {}, 0
+local white_underlay, white_blits = 0, 0
 local image_white_bb={
-    blitFrom=function() white_blits=white_blits+1 end,
-    blendRectRGB32=function(_,x,y,w,h,color)
-        white_tones[#white_tones+1]=color
-    end,
+    pmulalphablitFrom=function() white_blits=white_blits+1 end,
+    blitFrom=function() error('white RGBA mode must preserve alpha') end,
     paintRect=function(_,x,y,w,h,color)
         if color=='WHITE' then white_underlay=white_underlay+1 end
     end,
 }
 instance:paintTo(image_white_bb,0,0)
 check(white_underlay>0 and white_blits>0,
-    'custom image paints white background and keeps image visible')
-check(#white_tones>0 and white_tones[1].r==255
-    and white_tones[1].g==255 and white_tones[1].b==255
-    and white_tones[1].a==140,
-    'opaque image receives visible white overlay rather than retaining black')
+    'white backing shows through PNG transparency without altering artwork')
 check(instance.spotlight_mask_color=='image','changing image backing retains custom image mode')
+
 instance:setSpotlightImageBaseColor('black')
 check(instance.spotlight_mask_color=='image' and instance.spotlight_image_base_color=='black',
     'custom image can return to black backing without changing image selection')
