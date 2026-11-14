@@ -70,7 +70,7 @@ function FocusReader:supportDiagnostics()
         {"paging or rolling", ui and (ui.paging ~= nil or ui.rolling ~= nil)},
         {"document", doc ~= nil},
         {"getTextFromPositions", doc and type(doc.getTextFromPositions) == "function"},
-        {"getCurrentPage", doc and type(doc.getCurrentPage) == "function"},
+        {"getCurrentPage (EPUB only)", ui and (ui.paging or (doc and type(doc.getCurrentPage) == "function"))},
         {"getCurrentPos (EPUB only)", ui and (ui.paging or (doc and type(doc.getCurrentPos) == "function"))},
         {"getVisiblePageCount (EPUB only)", ui and (ui.paging or (doc and type(doc.getVisiblePageCount) == "function"))},
         {"getPageCount", doc and type(doc.getPageCount) == "function"},
@@ -96,7 +96,7 @@ function FocusReader:isSupported()
     local doc = self.ui and self.ui.document
     return self.ui and (self.ui.rolling or self.ui.paging) and doc
         and type(doc.getTextFromPositions) == "function"
-        and type(doc.getCurrentPage) == "function"
+        and (self.ui.paging or type(doc.getCurrentPage) == "function")
         and (self.ui.paging or type(doc.getCurrentPos) == "function")
         and (self.ui.paging or type(doc.getVisiblePageCount) == "function")
         and type(doc.getPageCount) == "function"
