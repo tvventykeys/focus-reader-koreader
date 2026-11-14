@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.1-beta.1 — preview
+
+- Optional Reading Guide **Whole group** navigation, moving by the configured 1–5 lines without repeating previously read lines.
+- Preserves short final groups on a page; backward navigation follows group boundaries.
+- Original one-line behavior remains the default, and other reading modes are unchanged.
+- Automated Lua regression checks added for three- and five-line groups and page boundaries. Wider Kobo user testing requested before stable release.
+
+
 ## v1.1.0 — 2026-11-14
 
 - Added word-by-word navigation without text-to-speech, including regression fixes for spaces, punctuation, curly quotes, and contractions.
