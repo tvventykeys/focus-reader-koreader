@@ -12,7 +12,7 @@ local stored = {
 local saved = {}
 package.preload['gettext']=function() return function(x) return x end end
 package.preload['datastorage']=function() return {getSettingsDir=function() return '/test' end} end
-package.preload['ffi/blitbuffer']=function() return {COLOR_BLACK='BLACK'} end
+package.preload['ffi/blitbuffer']=function() return {COLOR_BLACK='BLACK',COLOR_WHITE='WHITE'} end
 package.preload['device']=function() return {screen={getWidth=function() return 600 end, getHeight=function() return 900 end}} end
 package.preload['ui/geometry']=function() return {new=function(_,v) return v end} end
 package.preload['luasettings']=function()
@@ -72,7 +72,7 @@ local items=menu_items.focusreader.sub_item_table
 check(#items==4,'four simple menu sections')
 check(items[2].text=='Reading mode' and #items[2].sub_item_table==3,'reading mode includes both spotlight layouts')
 check(items[3].text=='Highlight Focus' and #items[3].sub_item_table==2,'highlight has two settings')
-check(items[4].text=='Spotlight Focus' and #items[4].sub_item_table==1,'spotlight only lines')
+check(items[4].text=='Spotlight Focus' and #items[4].sub_item_table==2,'spotlight lines and mask color')
 check(items[3].sub_item_table[1].text=='Color' and items[3].sub_item_table[2].text=='Focused lines','highlight color + lines labels')
 local labels={}
 local function scan(a)
@@ -111,6 +111,14 @@ check(instance.style=='mask' and instance.spotlight_layout=='window','spotlight 
 local bb={paints=0, paintRect=function(self,_,_,w,h,color) self.paints=self.paints+1; assert(color=='BLACK') end}
 instance:paintTo(bb,0,0)
 check(bb.paints>=1,'blackout drawn')
+check(instance.spotlight_mask_color=='black','old settings default to black')
+items[4].sub_item_table[2].sub_item_table[2].callback()
+check(instance.spotlight_mask_color=='white' and stored.spotlight_mask_color=='white','white mask preference saved')
+local white_bb={paints=0,paintRect=function(self,_,_,w,h,color) self.paints=self.paints+1; assert(color=='WHITE') end}
+instance:paintTo(white_bb,0,0)
+check(white_bb.paints>0,'white mask painted')
+items[4].sub_item_table[2].sub_item_table[1].callback()
+check(instance.spotlight_mask_color=='black','black can be restored')
 items[2].sub_item_table[3].callback() -- guide
 check(instance.style=='mask' and instance.spotlight_layout=='guide','spotlight guide selected')
 items[4].sub_item_table[1].sub_item_table[3].callback()
