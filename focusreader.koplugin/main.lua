@@ -273,11 +273,14 @@ local function hasReadableWordContent(value)
             return false
         end
         local punctuation = (codepoint >= 0x2000 and codepoint <= 0x206F)
+            or (codepoint >= 0x2E00 and codepoint <= 0x2E7F)
             or (codepoint >= 0x3000 and codepoint <= 0x303F)
             or (codepoint >= 0xFF00 and codepoint <= 0xFF0F)
             or (codepoint >= 0xFF1A and codepoint <= 0xFF20)
             or (codepoint >= 0xFF3B and codepoint <= 0xFF40)
             or (codepoint >= 0xFF5B and codepoint <= 0xFF65)
+            or (codepoint >= 0xFE10 and codepoint <= 0xFE1F)
+            or (codepoint >= 0xFE30 and codepoint <= 0xFE6F)
             or (codepoint >= 0x2190 and codepoint <= 0x21FF)
             or (codepoint >= 0x1F300 and codepoint <= 0x1FAFF)
         if not punctuation and ((codepoint >= 48 and codepoint <= 57)
@@ -338,9 +341,10 @@ function FocusReader:refreshWords()
         for j = #unique, math.max(1, #unique - 4), -1 do
             local previous = unique[j]
             if math.abs(previous.y - candidate.y) <= 2
-                    and math.abs(previous.x - candidate.x) <= 2
                     and wordCore(previous.word_text) == wordCore(candidate.word_text)
-                    and math.abs(previous.w - candidate.w) <= math.max(12, math.floor(previous.w * 0.2)) then
+                    and math.min(previous.x + previous.w, candidate.x + candidate.w)
+                        - math.max(previous.x, candidate.x) >= math.min(previous.w, candidate.w) * 0.75
+                    then
                 duplicate = true
                 -- Prefer the narrower box, which excludes trailing punctuation
                 -- or whitespace when CRengine exposes both alternatives.
