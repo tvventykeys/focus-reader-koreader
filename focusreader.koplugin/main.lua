@@ -29,6 +29,7 @@ local FocusReader = Widget:extend{
     refresh_mode = "focused", -- fixed smooth area refresh; no experimental modes
     style = "color",
     color_name = "yellow",
+    pdf_highlight_style = "tint", -- tint + underline, or underline only
     index = 1,
 }
 
@@ -50,6 +51,8 @@ function FocusReader:init()
         and "white" or "black"
     self.step_mode = self.settings:readSetting("step_mode") == "block" and "block" or "line"
     self.word_mode = self.settings:readSetting("word_mode") == true
+    self.pdf_highlight_style = self.settings:readSetting("pdf_highlight_style") == "underline"
+        and "underline" or "tint"
     -- One refresh path only, regardless of previously saved experiment keys.
     -- Never start precise/wide_wait, screen-wide or accelerated refreshes.
     self.refresh_mode = "focused"
@@ -400,7 +403,9 @@ function FocusReader:paintTo(bb, x, y)
                 local top = y + math.floor(line.y)
                 local width = math.ceil(line.w)
                 local height = math.ceil(line.h)
-                bb:blendRectRGB32(left, top, width, height, tint)
+                if self.pdf_highlight_style ~= "underline" then
+                    bb:blendRectRGB32(left, top, width, height, tint)
+                end
                 -- One-pixel separation keeps descenders readable.
                 local baseline = top + height + 1
                 local bottom = y + line.area.y + line.area.h
@@ -616,6 +621,16 @@ function FocusReader:setSpotlightLayout(layout)
     if self.enabled and self.style == "mask" then self:redraw(true) end
 end
 
+function FocusReader:setPDFHighlightStyle(style)
+    style = style == "underline" and "underline" or "tint"
+    if self.pdf_highlight_style == style then return end
+    self.pdf_highlight_style = style
+    self.settings:saveSetting("pdf_highlight_style", style)
+    if self.enabled and self.style == "color" and self.ui.paging then
+        self:redraw(true)
+    end
+end
+
 function FocusReader:setColor(name)
     if not PALETTE[name] then return end
     self.color_name = name
@@ -824,6 +839,22 @@ function FocusReader:addToMainMenu(menu_items)
                 sub_item_table = {
                     { text = _("Color"), sub_item_table = color_items },
                     { text = _("Focused lines"), sub_item_table = color_line_items },
+                    { text = _("PDF highlight style"), sub_item_table = {
+                        { text = _("Light tint + underline"),
+                          checked_func = function() return self.pdf_highlight_style == "tint" end,
+                          check_callback_closes_menu = true,
+                          callback = function(menu)
+                              self:closeSettingsMenu(menu)
+                              self:setPDFHighlightStyle("tint")
+                          end },
+                        { text = _("Underline only"),
+                          checked_func = function() return self.pdf_highlight_style == "underline" end,
+                          check_callback_closes_menu = true,
+                          callback = function(menu)
+                              self:closeSettingsMenu(menu)
+                              self:setPDFHighlightStyle("underline")
+                          end },
+                    } },
                     { text = _("Word-by-word (no speech)"),
                       checked_func = function() return self.word_mode end,
                       check_callback_closes_menu = true,
