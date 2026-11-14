@@ -1,10 +1,10 @@
 # Testing and compatibility
 
-## Before publishing this as stable v1.0.1
+## v1.1.0 release verification
 
 Use a Kobo Libra Colour (the known working device) and a plain EPUB:
 
-- [ ] Install the v1.0.1 release ZIP and confirm **Tools → Focus Reader** appears.
+- [ ] Install the v1.1.0 release ZIP and confirm **Tools → Focus Reader** appears.
 - [ ] Choose a color, checked reading mode, and focused-line count. Each choice should close the menu and return directly to the book (no extra middle tap).
 - [ ] Start/Stop from the menu: the menu should close before the page repaints.
 - [ ] Start Highlight Focus: verify yellow, 1–5 lines, color changes and clicker down/up.
@@ -13,7 +13,9 @@ Use a Kobo Libra Colour (the known working device) and a plain EPUB:
 - [ ] Select Spotlight Focus → Reading Guide: check the lower black "sheet of paper" boundary.
 - [ ] Switch back to Highlight Focus and stop; confirm normal page-turn controls restored.
 - [ ] Restart KOReader; confirm no auto-start, settings retained, and no error log.
-- [ ] Test an unsupported PDF/image page and verify plugin does not interfere.
+- [ ] Test text-based fixed-layout and reflowed PDFs, including underline-only mode; scanned/image-only PDFs must fail safely.
+- [ ] Verify word navigation skips punctuation-only boxes, preserves contractions, and moves one word per click.
+- [ ] Verify white and black Spotlight masks with PaperDots enabled and disabled.
 
 After these pass, make a GitHub release from this commit and share the **release asset** URL. Don't claim Kindle, PocketBook, Android, or other Kobo models work until tested.
 
@@ -34,7 +36,7 @@ python3 scripts/build_release.py
 
 This produces the installable ZIP in `dist/`. The tests mock KOReader API calls and validate behavior; they do not emulate an actual e-ink controller.
 
-## Development: Reddit requests (not stable)
+## Additional device and format regression matrix
 
 ### White Spotlight and PaperDots
 
