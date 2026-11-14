@@ -247,12 +247,49 @@ end
 -- to actual words. Lua 5.1's %w alone does not reliably match Unicode.
 local function hasReadableWordContent(value)
     if type(value) ~= "string" then return false end
-    for i = 1, #value do
-        local byte = value:byte(i)
-        if (byte >= 48 and byte <= 57) or (byte >= 65 and byte <= 90)
-                or (byte >= 97 and byte <= 122) or byte >= 128 then
+    local i = 1
+    while i <= #value do
+        local first = value:byte(i)
+        local codepoint, width
+        if first < 128 then
+            codepoint, width = first, 1
+        elseif first >= 194 and first <= 223 then
+            width = 2
+            local b2 = value:byte(i+1)
+            if not b2 or b2 < 128 or b2 > 191 then return false end
+            codepoint = (first-192)*64 + (b2-128)
+        elseif first >= 224 and first <= 239 then
+            width = 3
+            local b2,b3 = value:byte(i+1,i+2)
+            if not b2 or not b3 or b2 < 128 or b2 > 191 or b3 < 128 or b3 > 191 then return false end
+            codepoint = (first-224)*4096 + (b2-128)*64 + (b3-128)
+        elseif first >= 240 and first <= 244 then
+            width = 4
+            local b2,b3,b4 = value:byte(i+1,i+3)
+            if not b2 or not b3 or not b4 or b2 < 128 or b2 > 191
+                    or b3 < 128 or b3 > 191 or b4 < 128 or b4 > 191 then return false end
+            codepoint = (first-240)*262144 + (b2-128)*4096 + (b3-128)*64 + (b4-128)
+        else
+            return false
+        end
+        local punctuation = (codepoint >= 0x2000 and codepoint <= 0x206F)
+            or (codepoint >= 0x3000 and codepoint <= 0x303F)
+            or (codepoint >= 0xFF00 and codepoint <= 0xFF0F)
+            or (codepoint >= 0xFF1A and codepoint <= 0xFF20)
+            or (codepoint >= 0xFF3B and codepoint <= 0xFF40)
+            or (codepoint >= 0xFF5B and codepoint <= 0xFF65)
+            or (codepoint >= 0x2190 and codepoint <= 0x21FF)
+            or (codepoint >= 0x1F300 and codepoint <= 0x1FAFF)
+        if not punctuation and ((codepoint >= 48 and codepoint <= 57)
+                or (codepoint >= 65 and codepoint <= 90)
+                or (codepoint >= 97 and codepoint <= 122)
+                or (codepoint >= 0x00C0 and codepoint <= 0x1FFF)
+                or (codepoint >= 0x2070 and codepoint <= 0x2FFF)
+                or (codepoint >= 0x3040 and codepoint <= 0xD7FF)
+                or (codepoint >= 0xF900 and codepoint <= 0xFAFF)) then
             return true
         end
+        i = i + width
     end
     return false
 end
