@@ -600,19 +600,31 @@ function FocusReader:shade(bb, x, y, w, h)
     if self.spotlight_mask_color == "image" then
         local base = self.spotlight_image_base_color == "white"
             and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
-        -- Fill the entire mask region first; transparent margins and a
-        -- missing image now use the independently selected background color.
+        -- KOReader's MuPDF image renderer supplies premultiplied alpha for
+        -- RGBA PNGs. Paint the chosen background first, then alpha-composite
+        -- the image; plain blitFrom discards transparency and turns clear
+        -- pixels black. Do not tint the illustrated opaque pixels.
         bb:paintRect(x, y, w, h, base)
         local image = self:loadMaskImage()
         if image then
-            -- Clip to the rendered screen-sized image, including on rotation.
             local ix, iy = math.max(0, x), math.max(0, y)
             local right = math.min(Screen:getWidth(), x + w)
             local bottom = math.min(Screen:getHeight(), y + h)
             if right > ix and bottom > iy then
-                local ok = pcall(bb.blitFrom, bb, image,
-                    ix, iy, ix, iy, right - ix, bottom - iy)
-                if ok then return end
+                local width, height = right - ix, bottom - iy
+                local ok, image_type = pcall(image.getType, image)
+                local has_alpha = ok and (image_type == Blitbuffer.TYPE_BBRGB32
+                    or image_type == Blitbuffer.TYPE_BB8A)
+                if has_alpha and type(bb.pmulalphablitFrom) == "function" then
+                    local painted = pcall(bb.pmulalphablitFrom, bb, image,
+                        ix, iy, ix, iy, width, height)
+                    if painted then return end
+                elseif not has_alpha and type(bb.blitFrom) == "function" then
+                    -- JPEG and fully opaque formats have no alpha to preserve.
+                    local painted = pcall(bb.blitFrom, bb, image,
+                        ix, iy, ix, iy, width, height)
+                    if painted then return end
+                end
             end
         end
         -- The chosen background is already painted as a safe fallback.
