@@ -62,10 +62,10 @@ function Logic.maxStart(lines, count)
 end
 
 -- Inclusive highlight window, never stretching one slot across page areas.
-function Logic.slot(lines, index, count)
+function Logic.slot(lines, index, count, allow_partial)
     if #lines == 0 then return nil end
     count = clamp(count, 1, 5)
-    index = clamp(index, 1, Logic.maxStart(lines, count))
+    index = clamp(index, 1, allow_partial and #lines or Logic.maxStart(lines, count))
     local first, last = lines[index], lines[index]
     for j = index + 1, math.min(#lines, index + count - 1) do
         if lines[j].area ~= first.area then break end
@@ -89,6 +89,23 @@ function Logic.advance(lines, current, count, direction, step)
     elseif direction < 0 then
         if current <= 1 then return nil, -1 end
         return math.max(1, current - step), nil
+    end
+    return current, nil
+end
+
+-- Advance in disjoint groups; never pull a short final group backwards to refill it.
+-- Reverse navigation follows the same group boundaries, including the final group.
+function Logic.advanceGroup(lines, current, count, direction)
+    if #lines == 0 then return nil, direction end
+    count = clamp(count, 1, 5)
+    local last = 1 + math.floor((#lines - 1) / count) * count
+    current = clamp(current, 1, last)
+    if direction > 0 then
+        if current >= last then return nil, 1 end
+        return math.min(last, current + count), nil
+    elseif direction < 0 then
+        if current <= 1 then return nil, -1 end
+        return math.max(1, current - count), nil
     end
     return current, nil
 end
