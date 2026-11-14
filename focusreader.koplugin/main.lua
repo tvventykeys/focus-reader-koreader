@@ -863,8 +863,9 @@ function FocusReader:chooseSpotlightImage()
     local current = self.spotlight_image_path or folder
     local picker = require("apps/filemanager/filemanagerutil")
     local filter = function(name)
-        return type(name) == "string"
-            and name:lower():match("%.(png|jpg|jpeg|webp|bmp)$") ~= nil
+        if type(name) ~= "string" then return false end
+        local suffix = name:lower():match("%.([^.]+)$")
+        return ({png=true, jpg=true, jpeg=true, webp=true, bmp=true})[suffix] == true
     end
     picker.showChooseDialog(_("Choose Spotlight background image"), function(path)
         if type(path) ~= "string" or path == "" then return end
