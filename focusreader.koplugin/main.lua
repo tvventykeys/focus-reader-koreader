@@ -350,7 +350,42 @@ function FocusReader:refreshWords()
         end
         if not duplicate then unique[#unique + 1] = candidate end
     end
-    self.words = unique
+    -- CRengine may expose a contraction as two word boxes with a separate
+    -- apostrophe token. Join only when the intervening glyph is an apostrophe,
+    -- never merely because two word boxes are close together.
+    local merged = {}
+    local function hasApostrophe(value)
+        return type(value) == "string" and (value:find("'", 1, true)
+            or value:find("’", 1, true) or value:find("ʼ", 1, true))
+    end
+    local function joinsContraction(left, right)
+        if math.abs(left.y - right.y) > 2 then return false end
+        local gap = right.x - (left.x + left.w)
+        if gap < -2 or gap > math.max(12, math.floor(left.h * 0.6)) then return false end
+        if hasApostrophe(left.word_text) or hasApostrophe(right.word_text) then
+            return true
+        end
+        -- Probe the actual engine text between boxes: ordinary spaces must
+        -- never cause adjacent words to merge.
+        local y = math.floor(left.y + left.h / 2)
+        for x = math.floor(left.x + left.w), math.ceil(right.x) do
+            local ok, token = pcall(doc.getWordFromPosition, doc, {x=x,y=y})
+            if ok and token and hasApostrophe(token.word) then return true end
+        end
+        return false
+    end
+    for _, candidate in ipairs(unique) do
+        local previous = merged[#merged]
+        if previous and joinsContraction(previous, candidate) then
+            local right = math.max(previous.x + previous.w, candidate.x + candidate.w)
+            previous.w = right - previous.x
+            previous.pos1 = candidate.pos1
+            previous.word_text = previous.word_text .. candidate.word_text
+        else
+            merged[#merged + 1] = candidate
+        end
+    end
+    self.words = merged
 end
 
 -- Read-only, on-screen diagnostic for real-device word navigation.
