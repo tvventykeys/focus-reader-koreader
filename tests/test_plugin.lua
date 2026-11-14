@@ -233,6 +233,46 @@ check(reader_closed == 2 and touch_closed == 0,
     'color selection closes full reader menu and bottom config')
 ui.menu.onTapCloseMenu = nil
 
+-- Word navigation must skip whitespace and standalone punctuation, including
+-- multi-byte punctuation, without dropping non-ASCII words.
+local old_get_word = doc.getWordFromPosition
+local original_line_count = instance.line_count
+local original_style = instance.style
+local original_word_mode = instance.word_mode
+local samples = {
+    {word='Hello',x=40,w=45},
+    {word=' ',x=88,w=9},
+    {word=',',x=100,w=8},
+    {word='world!',x=112,w=55},
+    {word='…',x=170,w=9},
+    {word='café',x=185,w=45},
+}
+function doc:getWordFromPosition(pos)
+    if pos.y < 100 or pos.y > 124 then return nil end
+    for i,entry in ipairs(samples) do
+        if pos.x >= entry.x and pos.x < entry.x+entry.w then
+            return {word=entry.word,sbox={x=entry.x,y=100,w=entry.w,h=24},
+                pos0='word'..i..'start',pos1='word'..i..'end'}
+        end
+    end
+end
+instance:setStyle('color')
+instance:setWordMode(true)
+instance:start()
+check(instance.enabled and #instance.words==3,
+    'word focus skips spaces and punctuation but keeps Unicode words')
+local w1=instance.words[1].pos0
+roll:onGotoViewRel(1)
+check(instance.words[instance.index].pos0~=w1 and instance.index==2,
+    'one click advances directly to next real word')
+roll:onGotoViewRel(1)
+check(instance.index==3,'next click reaches accented word without punctuation stop')
+instance:stop()
+doc.getWordFromPosition=old_get_word
+instance:setWordMode(original_word_mode)
+instance:setLines(original_line_count)
+instance:setStyle(original_style)
+
 -- EPUB underline-only uses the same temporary overlay without CRengine
 -- selection; switching back restores native selection.
 instance:setStyle('color')
