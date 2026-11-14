@@ -95,7 +95,9 @@ check(#items==4,'four simple menu sections')
 check(items[2].text=='Reading mode' and #items[2].sub_item_table==3,'reading mode includes both spotlight layouts')
 check(items[3].text=='Highlight Focus' and #items[3].sub_item_table==5,'highlight includes PDF style, word mode and diagnostics')
 check(items[3].sub_item_table[5].text=='Word navigation diagnostic','diagnostic menu item registered')
-check(items[4].text=='Spotlight Focus' and #items[4].sub_item_table==2,'spotlight lines and mask color')
+check(items[4].text=='Spotlight Focus' and #items[4].sub_item_table==3,'spotlight lines, mask and image background color')
+check(items[4].sub_item_table[3].text=='Image background color' and #items[4].sub_item_table[3].sub_item_table==2,
+    'image background provides black and white choices')
 check(items[3].sub_item_table[1].text=='Color' and items[3].sub_item_table[2].text=='Focused lines','highlight color + lines labels')
 local labels={}
 local function scan(a)
@@ -385,12 +387,30 @@ local image_bb={
     blitFrom=function(_,image,dx,dy,sx,sy,w,h)
         image_blits[#image_blits+1]={x=dx,y=dy,w=w,h=h}
     end,
-    paintRect=function() error('image unexpectedly fell back to solid mask') end,
+    paintRect=function(_,x,y,w,h,color)
+        check(color=='BLACK','custom image defaults to black underlay')
+    end,
 }
 instance:paintTo(image_bb,0,0)
 check(#image_blits>0 and image_loads==1,'custom image rendered and decoded once')
 instance:paintTo(image_bb,0,0)
 check(image_loads==1,'subsequent focus repaints reuse decoded image')
+instance:setSpotlightImageBaseColor('white')
+check(instance.spotlight_image_base_color=='white' and
+    stored.spotlight_image_base_color=='white','image backing color saved separately')
+local white_underlay=0
+local image_white_bb={
+    blitFrom=function() end,
+    paintRect=function(_,x,y,w,h,color)
+        if color=='WHITE' then white_underlay=white_underlay+1 end
+    end,
+}
+instance:paintTo(image_white_bb,0,0)
+check(white_underlay>0,'custom image paints white background beneath image')
+check(instance.spotlight_mask_color=='image','changing image backing retains custom image mode')
+instance:setSpotlightImageBaseColor('black')
+check(instance.spotlight_mask_color=='image' and instance.spotlight_image_base_color=='black',
+    'custom image can return to black backing without changing image selection')
 instance:stop()
 check(image_frees>=1,'image memory released when focus stops')
 instance.spotlight_image_path='/test/koreader/screensavers/missing.png'
@@ -403,6 +423,14 @@ local fallback={painted=0,paintRect=function(self,_,_,_,_,color)
 end}
 instance:paintTo(fallback,0,0)
 check(fallback.painted>0,'unreadable image falls back to a safe black mask')
+instance:setSpotlightImageBaseColor('white')
+local missing_white={painted=0,paintRect=function(self,_,_,_,_,color)
+    check(color=='WHITE','missing image follows white backing preference')
+    self.painted=self.painted+1
+end}
+instance:paintTo(missing_white,0,0)
+check(missing_white.painted>0,'missing image safely falls back to white backing')
+instance:setSpotlightImageBaseColor('black')
 instance:stop()
 instance:setSpotlightMaskColor('black')
 instance:setStyle(original_style)
