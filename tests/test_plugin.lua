@@ -11,7 +11,29 @@ local stored = {
 }
 local saved = {}
 package.preload['gettext']=function() return function(x) return x end end
-package.preload['datastorage']=function() return {getSettingsDir=function() return '/test' end} end
+package.preload['datastorage']=function() return {
+    getSettingsDir=function() return '/test' end,
+    getDataDir=function() return '/test/koreader' end
+} end
+local image_loads, image_frees, image_path = 0, 0, nil
+package.preload['ui/renderimage']=function()
+    return {renderImageFile=function(_,path,_,width,height)
+        image_loads=image_loads+1
+        image_path=path
+        if path:find('missing') then return nil end
+        return {getWidth=function() return width end,
+            getHeight=function() return height end,
+            free=function() image_frees=image_frees+1 end}
+    end}
+end
+local chooser_folder, chooser_filter
+package.preload['apps/filemanager/filemanagerutil']=function()
+    return {showChooseDialog=function(_,callback,current,_,filter)
+        chooser_folder=current
+        chooser_filter=filter
+        callback('/test/koreader/screensavers/forest.png')
+    end}
+end
 package.preload['ffi/blitbuffer']=function() return {COLOR_BLACK='BLACK',COLOR_WHITE='WHITE', ColorRGB32=function(r,g,b,a) return {r=r,g=g,b=b,a=a} end} end
 package.preload['device']=function() return {screen={getWidth=function() return 600 end, getHeight=function() return 900 end}} end
 package.preload['ui/geometry']=function() return {new=function(_,v) return v end} end
@@ -89,6 +111,7 @@ check(#items[3].sub_item_table[1].sub_item_table==6,'six colors available')
 check(#items[3].sub_item_table[2].sub_item_table==5,'highlight lines 1-5 available')
 check(items[3].sub_item_table[4].text=='Word-by-word (no speech)','word focus toggle exists')
 check(#items[4].sub_item_table[1].sub_item_table==5,'spotlight lines 1-5 available')
+check(#items[4].sub_item_table[2].sub_item_table==4,'black, white, image and chooser available')
 instance:start()
 check(instance.enabled and roll.onGotoViewRel~=original,'start installs clicker hook')
 local selected=false
@@ -342,6 +365,45 @@ instance:stop()
 doc.getWordFromPosition=old_get_word
 instance:setWordMode(original_word_mode)
 instance:setLines(original_line_count)
+instance:setStyle(original_style)
+
+-- A selected screensaver image paints only masked areas, never the reading
+-- window; loading is cached and failures revert safely to a black mask.
+instance:setStyle('mask')
+instance:chooseSpotlightImage()
+check(instance.spotlight_mask_color=='image' and
+    instance.spotlight_image_path=='/test/koreader/screensavers/forest.png',
+    'image chooser stores the chosen image and enables custom mask')
+check(chooser_folder=='/test/koreader/screensavers',
+    'image chooser opens KOReader screensavers directory')
+check(chooser_filter('foo.PNG') and chooser_filter('image.jpeg')
+    and not chooser_filter('document.pdf'), 'chooser filters supported image formats')
+instance:start()
+local image_blits={}
+local image_bb={
+    blitFrom=function(_,image,dx,dy,sx,sy,w,h)
+        image_blits[#image_blits+1]={x=dx,y=dy,w=w,h=h}
+    end,
+    paintRect=function() error('image unexpectedly fell back to solid mask') end,
+}
+instance:paintTo(image_bb,0,0)
+check(#image_blits>0 and image_loads==1,'custom image rendered and decoded once')
+instance:paintTo(image_bb,0,0)
+check(image_loads==1,'subsequent focus repaints reuse decoded image')
+instance:stop()
+check(image_frees>=1,'image memory released when focus stops')
+instance.spotlight_image_path='/test/koreader/screensavers/missing.png'
+instance:setSpotlightMaskColor('black')
+instance:setSpotlightMaskColor('image')
+instance:start()
+local fallback={painted=0,paintRect=function(self,_,_,_,_,color)
+    self.painted=self.painted+1
+    check(color=='BLACK','unavailable image falls back to black')
+end}
+instance:paintTo(fallback,0,0)
+check(fallback.painted>0,'unreadable image falls back to a safe black mask')
+instance:stop()
+instance:setSpotlightMaskColor('black')
 instance:setStyle(original_style)
 
 -- EPUB underline-only uses the same temporary overlay without CRengine
