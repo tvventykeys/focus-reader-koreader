@@ -23,6 +23,7 @@ local FocusReader = Widget:extend{
     opacity = 56,         -- Fixed original default; never read old opacity preferences.
     legacy_line_count = 3, -- Independent Spotlight Focus reading window.
     spotlight_layout = "window", -- window (above & below) or guide (below only).
+    spotlight_mask_color = "black", -- backward-compatible default; optional white.
     step_mode = "line",
     refresh_mode = "focused", -- fixed smooth area refresh; no experimental modes
     style = "color",
@@ -44,6 +45,8 @@ function FocusReader:init()
     -- settings saved below 100: Spotlight Focus is now ALWAYS fully black.
     self.spotlight_layout = self.settings:readSetting("spotlight_layout") == "guide"
         and "guide" or "window"
+    self.spotlight_mask_color = self.settings:readSetting("spotlight_mask_color") == "white"
+        and "white" or "black"
     self.step_mode = self.settings:readSetting("step_mode") == "block" and "block" or "line"
     -- One refresh path only, regardless of previously saved experiment keys.
     -- Never start precise/wide_wait, screen-wide or accelerated refreshes.
@@ -249,7 +252,9 @@ end
 function FocusReader:shade(bb, x, y, w, h)
     w, h = math.floor(w), math.floor(h)
     if w <= 0 or h <= 0 then return end
-    return bb:paintRect(x, y, w, h, Blitbuffer.COLOR_BLACK)
+    local color = self.spotlight_mask_color == "white"
+        and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
+    return bb:paintRect(x, y, w, h, color)
 end
 
 function FocusReader:paintTo(bb, x, y)
@@ -432,6 +437,14 @@ function FocusReader:setLegacyLines(count)
             Logic.maxStart(self.lines, self.legacy_line_count))
         self:redraw(true)
     end
+end
+
+function FocusReader:setSpotlightMaskColor(color)
+    color = color == "white" and "white" or "black"
+    if self.spotlight_mask_color == color then return end
+    self.spotlight_mask_color = color
+    self.settings:saveSetting("spotlight_mask_color", color)
+    if self.enabled and self.style == "mask" then self:redraw(true) end
 end
 
 function FocusReader:setSpotlightLayout(layout)
@@ -646,6 +659,22 @@ function FocusReader:addToMainMenu(menu_items)
                 text = _("Spotlight Focus"),
                 sub_item_table = {
                     { text = _("Focused lines"), sub_item_table = spotlight_line_items },
+                    { text = _("Mask color"), sub_item_table = {
+                        { text = _("Black (default)"),
+                          checked_func = function() return self.spotlight_mask_color == "black" end,
+                          check_callback_closes_menu = true,
+                          callback = function(menu)
+                              self:closeSettingsMenu(menu)
+                              self:setSpotlightMaskColor("black")
+                          end },
+                        { text = _("White"),
+                          checked_func = function() return self.spotlight_mask_color == "white" end,
+                          check_callback_closes_menu = true,
+                          callback = function(menu)
+                              self:closeSettingsMenu(menu)
+                              self:setSpotlightMaskColor("white")
+                          end },
+                    } },
                 },
             },
         },
