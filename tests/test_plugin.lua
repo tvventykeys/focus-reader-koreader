@@ -268,7 +268,8 @@ check(stored.pdf_highlight_style=='underline','PDF underline preference persists
 blended={}
 pdf:paintTo(pdfbb,0,0)
 check(#blended==2,'underline-only mode draws no tint over glyphs')
-check(blended[1].h==2 and blended[1].color.a==165,'underline-only mode draws two-pixel line')
+check(blended[1].h==3 and blended[1].color.a==235,'underline-only mode draws high-contrast three-pixel line')
+check(blended[1].color.r < 100 and blended[1].color.g < 100,'underline-only darkens yellow for e-ink visibility')
 pdf:setPDFHighlightStyle('tint')
 blended={}
 pdf:paintTo(pdfbb,0,0)
