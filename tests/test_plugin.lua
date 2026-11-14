@@ -245,6 +245,7 @@ local samples = {
     {word=',',x=100,w=8},
     {word='world!',x=112,w=55},
     {word='…',x=170,w=9},
+    {word='“',x=180,w=5},
     {word='café',x=185,w=45},
 }
 function doc:getWordFromPosition(pos)
