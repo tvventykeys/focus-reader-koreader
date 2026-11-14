@@ -1,4 +1,4 @@
--- Focus Reader v1.0.1: offline reading-focus accessibility tool for KOReader.
+-- Focus Reader v1.1.0: offline reading-focus accessibility tool for KOReader.
 -- Native CRe selection for gentle color highlight; pure black masking
 -- for Reading Window / Reading Guide. No network, audio, or annotations.
 local Blitbuffer = require("ffi/blitbuffer")
