@@ -370,6 +370,7 @@ instance:setStyle(original_style)
 -- A selected screensaver image paints only masked areas, never the reading
 -- window; loading is cached and failures revert safely to a black mask.
 instance:setStyle('mask')
+instance.spotlight_image_path=nil
 instance:chooseSpotlightImage()
 check(instance.spotlight_mask_color=='image' and
     instance.spotlight_image_path=='/test/koreader/screensavers/forest.png',
