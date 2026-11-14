@@ -23,8 +23,21 @@ jobs:
         run: lua5.1 tests/test_logic.lua
       - name: Package release candidate
         run: python3 scripts/build_release.py
+      - name: Verify packaged filename and artifact count
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          version = Path("VERSION").read_text().strip()
+          files = list(Path("dist/release").glob("*.zip"))
+          assert len(files) == 1, files
+          expected = f"Focus-Reader-{version}-koplugin.zip"
+          if __import__("os").environ.get("GITHUB_REF_TYPE") == "tag":
+              expected = f"Focus-Reader-{__import__('os').environ['GITHUB_REF_NAME']}-koplugin.zip"
+          assert files[0].name == expected, (files, expected)
+          print("PASS:", expected)
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: focus-reader-development
-          path: dist/*.zip
+          path: dist/release/*.zip
           if-no-files-found: error
