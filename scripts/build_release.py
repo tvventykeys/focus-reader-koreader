@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / 'focusreader.koplugin'
 DIST = ROOT / 'dist'
 DIST.mkdir(exist_ok=True)
-output = DIST / 'Focus-Reader-v1.0.1-koplugin.zip'
+output = DIST / 'Focus-Reader-v1.1.0-koplugin.zip'
 with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
     for file in sorted(PLUGIN.rglob('*')):
         if file.is_file():

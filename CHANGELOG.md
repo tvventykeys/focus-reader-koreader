@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.1.0 — 2026-11-14
+
+- Added word-by-word navigation without text-to-speech, including regression fixes for spaces, punctuation, curly quotes, and contractions.
+- Added PDF focus support using text geometry where available, including readable tint/underline and underline-only styles.
+- Added underline-only Highlight Focus for EPUB as well as PDF.
+- Added optional white Spotlight masks while retaining black as the default.
+- Added read-only word navigation diagnostics and expanded Lua regression checks.
+- PaperDots can be used independently; exact overlay appearance depends on device and settings.
+- Scanned PDFs without selectable text remain unsupported; cross-device compatibility is not guaranteed.
+
 ## v1.0.1 — 2026-11-09
 
 - **Fixed menu staying open after choosing a Focus Reader setting.** KOReader's checked entries are normally persistent; Focus Reader now explicitly closes the menu before applying reading mode, color or focused-line changes.

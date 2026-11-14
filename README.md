@@ -7,20 +7,20 @@ Focus Reader moves a visual focus region down or up as you press KOReader's usua
 ## Modes
 
 - **Highlight Focus** (default): a gentle native text highlight with **Yellow, Orange, Green, Cyan, Blue, or Pink**. Choose **1–5 focused lines**. The shade has a fixed, gentle strength; no flashing/opacity controls are exposed.
-- **Spotlight Focus — Reading Window**: text above and below the focused 1–5 lines is masked **solid black**.
-- **Spotlight Focus — Reading Guide**: text above the reading position stays visible; everything below is masked **solid black**, like moving a sheet of paper down the page. The Spotlight line count is independent of Highlight Focus.
+- **Spotlight Focus — Reading Window**: text above and below the focused 1–5 lines is masked **solid black by default**, with an optional white mask.
+- **Spotlight Focus — Reading Guide**: text above the reading position stays visible; everything below is masked **solid black by default**, with an optional white mask, like moving a sheet of paper down the page. The Spotlight line count is independent of Highlight Focus.
 
 Focus Reader does **not** require a network connection, create annotations, read audio, or send any book text anywhere. It is independent of any narration or book-sync service.
 
 ## Installation
 
 1. Install KOReader first. This plugin does not work in the stock Kobo reader app.
-2. Download the **Focus-Reader-v1.0.1-koplugin.zip** release asset (not GitHub's automatically generated source ZIP).
+2. Download the **Focus-Reader-v1.1.0-koplugin.zip** release asset (not GitHub's automatically generated source ZIP).
 3. Extract it. Copy the **`focusreader.koplugin`** folder itself into KOReader's `plugins/` directory. Do not nest the directory inside another ZIP folder.
    - **Kobo:** `.adds/koreader/plugins/` on the connected e-reader.
    - **Other devices:** find the `plugins` directory inside your KOReader data directory; its location varies.
 4. Safely eject your device and fully restart KOReader.
-5. Open a reflowable book, such as EPUB, then go to **Tools → Focus Reader** and choose **Start Focus Reader**.
+5. Open a text-based EPUB or PDF, then go to **Tools → Focus Reader** and choose **Start Focus Reader**.
 
 Expected path (Kobo): `.adds/koreader/plugins/focusreader.koplugin/main.lua`
 
@@ -32,20 +32,20 @@ Expected path (Kobo): `.adds/koreader/plugins/focusreader.koplugin/main.lua`
 
 - Start / Stop Focus Reader
 - Reading mode: Highlight Focus / Spotlight Focus: Reading Window / Spotlight Focus: Reading Guide
-- Highlight Focus: Color, Focused lines (1–5)
-- Spotlight Focus: Focused lines (1–5)
+- Highlight Focus: Color, Focused lines (1–5), Tint + underline or Underline only (EPUB/PDF), Word-by-word navigation (no speech)
+- Spotlight Focus: Focused lines (1–5), Mask color (Black default / White optional)
 
 Use the same buttons or clicker inputs that already turn pages in KOReader. A click normally moves by one visual line; if you previously selected block movement in an older release, the stored preference is retained. Stop Focus Reader to restore normal page turning.
 
 ## Compatibility and known limitations
 
-- Developed and previously tested on **Kobo Libra Colour with KOReader** (private v0.6.x versions). **The public v1.0.1 package needs an installation smoke test on the device before public announcement.**
-- Designed for **reflowable documents supported by KOReader's CRengine** (for example EPUB), not PDF or image-only pages.
-- Other KOReader devices/builds are **not tested**. Color selection may not be available everywhere; Spotlight Focus requires the underlying text-position API too. Grayscale screens will not show the palette as color.
-- E-ink hardware may briefly darken colored highlights during refresh. Focus Reader uses the working non-flashing UI refresh; it cannot guarantee perfectly transition-free updates on every e-ink panel.
-- Existing native text selections or another plugin that controls selections can conflict. Stop one focus/highlighting session before using the other.
-- Works with **page-turn controls already recognized by KOReader**; it does not pair/configure Bluetooth hardware or handle audio.
-- Does not diagnose or treat ADHD, dyslexia, or other medical conditions; it is a reading preference/accessibility aid.
+- **v1.1.0** adds word-by-word navigation, punctuation/whitespace handling, underline-only EPUB/PDF highlighting, and optional white Spotlight masks (black remains default).
+- Word navigation groups common contractions and skips standalone whitespace and punctuation; text extraction and geometry can still vary with fonts, document engines, and layouts.
+- Text-based PDFs are supported where KOReader exposes the required MuPDF text geometry. Fixed-layout and reflowed PDF behavior may differ. Scanned/image-only PDFs are not OCR'd.
+- PaperDots can be used alongside Focus Reader; appearance depends on its own settings and the screen refresh/rendering order. Compatibility on other devices is not guaranteed.
+- Tested interactively on Kobo Libra Colour with KOReader during development; mocked Lua regression tests are not a substitute for testing every document and device.
+- Works with page-turn controls recognized by KOReader; it does not pair/configure Bluetooth hardware or handle audio.
+- No network access, telemetry, or book-text upload.
 
 ## Privacy and safety
 

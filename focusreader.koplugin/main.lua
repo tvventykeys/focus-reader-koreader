@@ -1,4 +1,4 @@
--- Focus Reader v1.0.1: offline reading-focus accessibility tool for KOReader.
+-- Focus Reader v1.1.0: offline reading-focus accessibility tool for KOReader.
 -- Native CRe selection for gentle color highlight; pure black masking
 -- for Reading Window / Reading Guide. No network, audio, or annotations.
 local Blitbuffer = require("ffi/blitbuffer")
@@ -23,10 +23,13 @@ local FocusReader = Widget:extend{
     opacity = 56,         -- Fixed original default; never read old opacity preferences.
     legacy_line_count = 3, -- Independent Spotlight Focus reading window.
     spotlight_layout = "window", -- window (above & below) or guide (below only).
+    spotlight_mask_color = "black", -- backward-compatible default; optional white.
     step_mode = "line",
+    word_mode = false, -- optional native CRengine word selection
     refresh_mode = "focused", -- fixed smooth area refresh; no experimental modes
     style = "color",
     color_name = "yellow",
+    pdf_highlight_style = "tint", -- tint + underline, or underline only
     index = 1,
 }
 
@@ -44,7 +47,12 @@ function FocusReader:init()
     -- settings saved below 100: Spotlight Focus is now ALWAYS fully black.
     self.spotlight_layout = self.settings:readSetting("spotlight_layout") == "guide"
         and "guide" or "window"
+    self.spotlight_mask_color = self.settings:readSetting("spotlight_mask_color") == "white"
+        and "white" or "black"
     self.step_mode = self.settings:readSetting("step_mode") == "block" and "block" or "line"
+    self.word_mode = self.settings:readSetting("word_mode") == true
+    self.pdf_highlight_style = self.settings:readSetting("pdf_highlight_style") == "underline"
+        and "underline" or "tint"
     -- One refresh path only, regardless of previously saved experiment keys.
     -- Never start precise/wide_wait, screen-wide or accelerated refreshes.
     self.refresh_mode = "focused"
@@ -57,13 +65,43 @@ function FocusReader:init()
     -- Deliberately do not auto-start a previous session.
 end
 
+function FocusReader:supportDiagnostics()
+    local ui = self.ui
+    local doc = ui and ui.document
+    local checks = {
+        {"reader controller", ui ~= nil},
+        {"paging or rolling", ui and (ui.paging ~= nil or ui.rolling ~= nil)},
+        {"document", doc ~= nil},
+        {"getTextFromPositions", doc and type(doc.getTextFromPositions) == "function"},
+        {"getCurrentPage (EPUB only)", ui and (ui.paging or (doc and type(doc.getCurrentPage) == "function"))},
+        {"getCurrentPos (EPUB only)", ui and (ui.paging or (doc and type(doc.getCurrentPos) == "function"))},
+        {"getVisiblePageCount (EPUB only)", ui and (ui.paging or (doc and type(doc.getVisiblePageCount) == "function"))},
+        {"getPageCount", doc and type(doc.getPageCount) == "function"},
+        {"view", self.view ~= nil},
+        {"screenToPageTransform (PDF)", not (ui and ui.paging) or
+            (self.view and type(self.view.screenToPageTransform) == "function")},
+        {"pageToScreenTransform (PDF)", not (ui and ui.paging) or
+            (self.view and type(self.view.pageToScreenTransform) == "function")},
+    }
+    local lines = {"Focus Reader diagnostic (no changes made):"}
+    for _, check in ipairs(checks) do
+        lines[#lines + 1] = (check[2] and "OK: " or "MISSING: ") .. check[1]
+    end
+    if ui and ui.paging then
+        lines[#lines+1] = "PDF page: " .. tostring(ui.paging.current_page)
+        lines[#lines+1] = "Reflow: " ..
+            tostring(doc and doc.configurable and doc.configurable.text_wrap)
+    end
+    return table.concat(lines, "\n")
+end
+
 function FocusReader:isSupported()
     local doc = self.ui and self.ui.document
-    return self.ui and self.ui.rolling and doc
+    return self.ui and (self.ui.rolling or self.ui.paging) and doc
         and type(doc.getTextFromPositions) == "function"
-        and type(doc.getCurrentPage) == "function"
-        and type(doc.getCurrentPos) == "function"
-        and type(doc.getVisiblePageCount) == "function"
+        and (self.ui.paging or type(doc.getCurrentPage) == "function")
+        and (self.ui.paging or type(doc.getCurrentPos) == "function")
+        and (self.ui.paging or type(doc.getVisiblePageCount) == "function")
         and type(doc.getPageCount) == "function"
         and self.view ~= nil
 end
@@ -94,6 +132,7 @@ end
 
 function FocusReader:getLocation()
     if not self.supported or not self.ui.document then return nil end
+    if self.ui.paging then return self.ui.paging.current_page end
     if self.view.view_mode == "scroll" then return self.ui.document:getCurrentPos() end
     return self.ui.document:getCurrentPage(true)
 end
@@ -108,7 +147,7 @@ end
 
 function FocusReader:getPageAreas(viewport)
     local doc = self.ui.document
-    if self.view.view_mode == "scroll" or doc:getVisiblePageCount() == 1 then
+    if self.ui.paging or self.view.view_mode == "scroll" or doc:getVisiblePageCount() == 1 then
         return { viewport }
     end
     local half = math.floor(viewport.w / 2)
@@ -129,31 +168,266 @@ function FocusReader:refreshLines(reset_index)
     local areas = self:getPageAreas(viewport)
     self.areas = areas
     local end_area = areas[#areas]
-    local ok, text_boxes = pcall(self.ui.document.getTextFromPositions, self.ui.document,
-        { x = viewport.x, y = viewport.y },
-        { x = end_area.x + end_area.w, y = end_area.y + end_area.h }, true)
-    if ok and text_boxes and type(text_boxes.sboxes) == "table" then
-        for _, area in ipairs(areas) do
-            for _, line in ipairs(Logic.normaliseLines(text_boxes.sboxes, area)) do
-                self.lines[#self.lines + 1] = line
+    if self.ui.paging then
+        -- MuPDF/KOPT requires page-numbered coordinates, not EPUB screen
+        -- positions. Screen/page transforms account for zoom and reflow.
+        local page = self.ui.paging.current_page
+        if type(page) == "number"
+                and type(self.view.screenToPageTransform) == "function"
+                and type(self.view.pageToScreenTransform) == "function" then
+            local p0ok, p0 = pcall(self.view.screenToPageTransform, self.view,
+                {x=viewport.x+2, y=viewport.y+2})
+            local p1ok, p1 = pcall(self.view.screenToPageTransform, self.view,
+                {x=end_area.x+end_area.w-2, y=end_area.y+end_area.h-2})
+            if p0ok and p1ok and p0 and p1 and p0.page == p1.page then
+                local ok, result = pcall(self.ui.document.getTextFromPositions,
+                    self.ui.document, p0, p1)
+                if ok and result and type(result.sboxes) == "table" then
+                    local boxes = {}
+                    for _, line_boxes in ipairs(result.sboxes) do
+                        local group = type(line_boxes) == "table"
+                            and line_boxes.x == nil and line_boxes or {line_boxes}
+                        for _, b in ipairs(group) do
+                            if type(b) == "table" then
+                                local x0,y0 = b.x0 or b.x, b.y0 or b.y
+                                local x1,y1 = b.x1 or (b.x and b.w and b.x+b.w),
+                                    b.y1 or (b.y and b.h and b.y+b.h)
+                                if x0 and y0 and x1 and y1 then
+                                    local transformed, rect = pcall(self.view.pageToScreenTransform,
+                                        self.view, page, {x=x0,y=y0,w=x1-x0,h=y1-y0})
+                                    if transformed and rect and rect.w and rect.h then
+                                        boxes[#boxes+1] = rect
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    for _, area in ipairs(areas) do
+                        for _, line in ipairs(Logic.normaliseLines(boxes, area)) do
+                            self.lines[#self.lines+1] = line
+                        end
+                    end
+                end
+            end
+        end
+    else
+        local ok, text_boxes = pcall(self.ui.document.getTextFromPositions, self.ui.document,
+            { x = viewport.x, y = viewport.y },
+            { x = end_area.x + end_area.w, y = end_area.y + end_area.h }, true)
+        if ok and text_boxes and type(text_boxes.sboxes) == "table" then
+            for _, area in ipairs(areas) do
+                for _, line in ipairs(Logic.normaliseLines(text_boxes.sboxes, area)) do
+                    self.lines[#self.lines + 1] = line
+                end
             end
         end
     end
+    if self.word_mode and self.style == "color" and not self.ui.paging then
+        self:refreshWords()
+    else
+        self.words = nil
+    end
     local active_count = self:getFocusLineCount()
+    local sequence = self.word_mode and self.style == "color" and not self.ui.paging and self.words or self.lines
     if reset_index then
         self.index = self._page_direction == -1
-            and Logic.maxStart(self.lines, active_count) or 1
+            and Logic.maxStart(sequence, active_count) or 1
     else
-        self.index = math.min(self.index, Logic.maxStart(self.lines, active_count))
+        self.index = math.min(self.index, Logic.maxStart(sequence, active_count))
     end
 end
 
 function FocusReader:getFocusLineCount()
+    if self.word_mode and self.style == "color" and not self.ui.paging then return 1 end
     return self.style == "mask" and self.legacy_line_count or self.line_count
 end
 
+-- Ignore whitespace and punctuation-only CRengine tokens. Keep UTF-8
+-- letters (non-ASCII bytes) and digits, and preserve punctuation attached
+-- to actual words. Lua 5.1's %w alone does not reliably match Unicode.
+local function hasReadableWordContent(value)
+    if type(value) ~= "string" then return false end
+    local i = 1
+    while i <= #value do
+        local first = value:byte(i)
+        local codepoint, width
+        if first < 128 then
+            codepoint, width = first, 1
+        elseif first >= 194 and first <= 223 then
+            width = 2
+            local b2 = value:byte(i+1)
+            if not b2 or b2 < 128 or b2 > 191 then return false end
+            codepoint = (first-192)*64 + (b2-128)
+        elseif first >= 224 and first <= 239 then
+            width = 3
+            local b2,b3 = value:byte(i+1,i+2)
+            if not b2 or not b3 or b2 < 128 or b2 > 191 or b3 < 128 or b3 > 191 then return false end
+            codepoint = (first-224)*4096 + (b2-128)*64 + (b3-128)
+        elseif first >= 240 and first <= 244 then
+            width = 4
+            local b2,b3,b4 = value:byte(i+1,i+3)
+            if not b2 or not b3 or not b4 or b2 < 128 or b2 > 191
+                    or b3 < 128 or b3 > 191 or b4 < 128 or b4 > 191 then return false end
+            codepoint = (first-240)*262144 + (b2-128)*4096 + (b3-128)*64 + (b4-128)
+        else
+            return false
+        end
+        local punctuation = (codepoint >= 0x2000 and codepoint <= 0x206F)
+            or (codepoint >= 0x2E00 and codepoint <= 0x2E7F)
+            or (codepoint >= 0x3000 and codepoint <= 0x303F)
+            or (codepoint >= 0xFF00 and codepoint <= 0xFF0F)
+            or (codepoint >= 0xFF1A and codepoint <= 0xFF20)
+            or (codepoint >= 0xFF3B and codepoint <= 0xFF40)
+            or (codepoint >= 0xFF5B and codepoint <= 0xFF65)
+            or (codepoint >= 0xFE10 and codepoint <= 0xFE1F)
+            or (codepoint >= 0xFE30 and codepoint <= 0xFE6F)
+            or (codepoint >= 0x2190 and codepoint <= 0x21FF)
+            or (codepoint >= 0x1F300 and codepoint <= 0x1FAFF)
+        if not punctuation and ((codepoint >= 48 and codepoint <= 57)
+                or (codepoint >= 65 and codepoint <= 90)
+                or (codepoint >= 97 and codepoint <= 122)
+                or (codepoint >= 0x00C0 and codepoint <= 0x1FFF)
+                or (codepoint >= 0x2070 and codepoint <= 0x2FFF)
+                or (codepoint >= 0x3040 and codepoint <= 0xD7FF)
+                or (codepoint >= 0xF900 and codepoint <= 0xFAFF)) then
+            return true
+        end
+        i = i + width
+    end
+    return false
+end
+
+-- Discover real words from CRengine, never estimate word widths from text.
+-- Each candidate is checked against the engine-provided word box.
+function FocusReader:refreshWords()
+    self.words = {}
+    local doc = self.ui.document
+    if type(doc.getWordFromPosition) ~= "function" then return end
+    local seen = {}
+    for _, line in ipairs(self.lines) do
+        local y = math.floor(line.y + line.h / 2)
+        local stride = math.max(2, math.floor(line.h / 3))
+        for x = math.floor(line.x + 1), math.floor(line.x + line.w - 1), stride do
+            local ok, word = pcall(doc.getWordFromPosition, doc, {x=x,y=y})
+            local b = ok and word and word.sbox
+            if b and word.pos0 and word.pos1 and type(word.word) == "string"
+                    and hasReadableWordContent(word.word) and b.w and b.h and b.w > 0 and b.h > 0
+                    and x >= b.x and x < b.x + b.w and y >= b.y and y < b.y + b.h then
+                local key = tostring(word.pos0) .. ":" .. tostring(word.pos1)
+                if not seen[key] then
+                    seen[key] = true
+                    self.words[#self.words+1] = {x=b.x,y=b.y,w=b.w,h=b.h,
+                        area=line.area,pos0=word.pos0,pos1=word.pos1,word_text=word.word}
+                end
+            end
+        end
+    end
+    table.sort(self.words, function(a,b)
+        if math.abs(a.y-b.y) <= math.min(a.h,b.h)/2 then
+            if a.x ~= b.x then return a.x < b.x end
+            return a.w < b.w
+        end
+        return a.y < b.y
+    end)
+    -- CRengine can return different XPointers for the same visible word,
+    -- including variants with a trailing space or comma. Deduplicate by
+    -- actual screen position and word content, not XPointers alone.
+    local unique = {}
+    local function wordCore(value)
+        local core = (value or ""):gsub("[%s%p]", "")
+        -- Lua 5.1 %p is ASCII-only. Strip UTF-8 quotation and punctuation
+        -- marks before comparing overlapping engine word variants.
+        for _, mark in ipairs({"“", "”", "‘", "’", "ʼ", "„", "«", "»",
+                "…", "–", "—", "‐", "‑", "。", "、", "，", "！", "？"}) do
+            core = core:gsub(mark, "")
+        end
+        return core
+    end
+    for _, candidate in ipairs(self.words) do
+        local duplicate = false
+        for j = #unique, math.max(1, #unique - 4), -1 do
+            local previous = unique[j]
+            if math.abs(previous.y - candidate.y) <= 2
+                    and wordCore(previous.word_text) == wordCore(candidate.word_text)
+                    and math.min(previous.x + previous.w, candidate.x + candidate.w)
+                        - math.max(previous.x, candidate.x) >= math.min(previous.w, candidate.w) * 0.75
+                    then
+                duplicate = true
+                -- Prefer the narrower box, which excludes trailing punctuation
+                -- or whitespace when CRengine exposes both alternatives.
+                if candidate.w < previous.w then unique[j] = candidate end
+                break
+            end
+        end
+        if not duplicate then unique[#unique + 1] = candidate end
+    end
+    -- CRengine may expose a contraction as two word boxes with a separate
+    -- apostrophe token. Join only when the intervening glyph is an apostrophe,
+    -- never merely because two word boxes are close together.
+    local merged = {}
+    local function hasApostrophe(value)
+        return type(value) == "string" and (value:find("'", 1, true)
+            or value:find("’", 1, true) or value:find("ʼ", 1, true))
+    end
+    local function joinsContraction(left, right)
+        if math.abs(left.y - right.y) > 2 then return false end
+        local gap = right.x - (left.x + left.w)
+        if gap < -2 or gap > math.max(12, math.floor(left.h * 0.6)) then return false end
+        if hasApostrophe(left.word_text) or hasApostrophe(right.word_text) then
+            return true
+        end
+        -- Probe the actual engine text between boxes: ordinary spaces must
+        -- never cause adjacent words to merge.
+        local y = math.floor(left.y + left.h / 2)
+        for x = math.floor(left.x + left.w), math.ceil(right.x) do
+            local ok, token = pcall(doc.getWordFromPosition, doc, {x=x,y=y})
+            if ok and token and hasApostrophe(token.word) then return true end
+        end
+        return false
+    end
+    for _, candidate in ipairs(unique) do
+        local previous = merged[#merged]
+        if previous and joinsContraction(previous, candidate) then
+            local right = math.max(previous.x + previous.w, candidate.x + candidate.w)
+            previous.w = right - previous.x
+            previous.pos1 = candidate.pos1
+            previous.word_text = previous.word_text .. candidate.word_text
+        else
+            merged[#merged + 1] = candidate
+        end
+    end
+    self.words = merged
+end
+
+-- Read-only, on-screen diagnostic for real-device word navigation.
+-- No book text is saved, transmitted or written to a log.
+function FocusReader:showWordDiagnostics()
+    local entries = self.words or {}
+    local output = {
+        _("Word navigation diagnostic (current page only)"),
+        _("Accepted words: ") .. tostring(#entries),
+        _("Current index: ") .. tostring(self.index or 1),
+        _("Mode: ") .. (self.word_mode and "word" or "line"),
+    }
+    local first = math.max(1, (self.index or 1) - 3)
+    local last = math.min(#entries, (self.index or 1) + 5)
+    for i = first, last do
+        local entry = entries[i]
+        local value = tostring(entry.word_text or "?")
+        value = value:gsub("\n", " "):gsub("\r", " ")
+        if #value > 45 then value = value:sub(1,45) .. "..." end
+        output[#output+1] = string.format("%s%d: [%s] x=%d y=%d w=%d",
+            i == self.index and "> " or "  ", i, value,
+            entry.x or -1, entry.y or -1, entry.w or -1)
+    end
+    UIManager:show(require("ui/widget/infomessage"):new{
+        text = table.concat(output, "\n"),
+    })
+end
+
 function FocusReader:getSlot()
-    return Logic.slot(self.lines, self.index, self:getFocusLineCount())
+    local sequence = self.word_mode and self.style == "color" and not self.ui.paging and self.words or self.lines
+    return Logic.slot(sequence or {}, self.index, self:getFocusLineCount())
 end
 
 -- Solid RGB is what the EPUB engine accepts for a native selection.
@@ -201,13 +475,13 @@ end
 -- One selection spans the visible lines, with text-coordinate endpoints.
 function FocusReader:applyNativeSelection()
     if not self.enabled or self.style ~= "color" then return false end
-    local first = self.lines[self.index]
+    local first = self.word_mode and self.words and self.words[self.index] or self.lines[self.index]
     if not first then
         self:clearNativeSelection()
         return false
     end
     local last = first
-    for j = self.index + 1, math.min(#self.lines, self.index + self.line_count - 1) do
+    for j = self.index + 1, self.word_mode and self.index or math.min(#self.lines, self.index + self.line_count - 1) do
         if self.lines[j].area ~= first.area then break end
         last = self.lines[j]
     end
@@ -220,8 +494,13 @@ function FocusReader:applyNativeSelection()
         y = math.floor(last.y + last.h / 2),
     }
     local doc = self.ui.document
-    local ok, range = pcall(doc.getTextFromPositions, doc,
-        start_pos, end_pos, true)
+    local ok, range
+    if self.word_mode then
+        ok, range = true, {pos0=first.pos0,pos1=first.pos1,sboxes={first}}
+    else
+        ok, range = pcall(doc.getTextFromPositions, doc,
+            start_pos, end_pos, true)
+    end
     if not ok or type(range) ~= "table" or not range.pos0 or not range.pos1 then
         self:clearNativeSelection()
         return false
@@ -249,11 +528,61 @@ end
 function FocusReader:shade(bb, x, y, w, h)
     w, h = math.floor(w), math.floor(h)
     if w <= 0 or h <= 0 then return end
-    return bb:paintRect(x, y, w, h, Blitbuffer.COLOR_BLACK)
+    local color = self.spotlight_mask_color == "white"
+        and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
+    return bb:paintRect(x, y, w, h, color)
+end
+
+function FocusReader:usesOverlayHighlight()
+    return self.style == "color" and (self.ui.paging or self.pdf_highlight_style == "underline")
 end
 
 function FocusReader:paintTo(bb, x, y)
-    if not self.supported or not self.enabled or self.style ~= "mask" then return end
+    if not self.supported or not self.enabled then return end
+    if self:usesOverlayHighlight() then
+        -- Temporary, non-annotation PDF overlay. Unlike CRengine, MuPDF does
+        -- not expose a mutable selection color. Blend over the rendered page.
+        -- Restrict painting to actual text line boxes, not the full row.
+        local count = self:getFocusLineCount()
+        local sequence = self.word_mode and not self.ui.paging and self.words or self.lines
+        local first = self.index
+        local last = math.min(#sequence, first + count - 1)
+        local rgb = PALETTE[self.color_name] or PALETTE.yellow
+        -- KOReader composites this AFTER the PDF glyphs are rendered.
+        -- Strong blending washes out black text; use a very faint tint
+        -- and a more visible underline below each text box instead.
+        local tint = Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 26)
+        -- Underline-only needs more contrast on e-ink, especially yellow.
+        -- Use a dark, nearly opaque stroke while retaining the chosen hue
+        -- in tint mode. Keep it below the glyphs.
+        local underline_only = self.pdf_highlight_style == "underline"
+        local underline = underline_only
+            and Blitbuffer.ColorRGB32(
+                math.floor(rgb[1] * 0.32), math.floor(rgb[2] * 0.32),
+                math.floor(rgb[3] * 0.32), 235)
+            or Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 165)
+        local stroke = underline_only and 3 or 2
+        for i = first, last do
+            local line = sequence[i]
+            if line and sequence[first] and line.area == sequence[first].area then
+                local left = x + math.floor(line.x)
+                local top = y + math.floor(line.y)
+                local width = math.ceil(line.w)
+                local height = math.ceil(line.h)
+                if self.ui.paging and self.pdf_highlight_style ~= "underline" then
+                    bb:blendRectRGB32(left, top, width, height, tint)
+                end
+                -- One-pixel separation keeps descenders readable.
+                local baseline = top + height + 1
+                local bottom = y + line.area.y + line.area.h
+                if baseline + stroke <= bottom then
+                    bb:blendRectRGB32(left, baseline, width, stroke, underline)
+                end
+            end
+        end
+        return
+    end
+    if self.style ~= "mask" then return end
     local slot = self:getSlot()
     if not slot then return end -- No text: do not blackout an image-only page.
     for _, area in ipairs(self.areas) do
@@ -313,7 +642,7 @@ end
 -- Forward the original page-turn implementation when the spotlight reaches
 -- its end; restore the exact original function on Stop or document close.
 function FocusReader:installTurnHook()
-    local rolling = self.ui.rolling
+    local rolling = self.ui.rolling or self.ui.paging
     if self._turn_wrapper then return end
     self._original_turn = rolling.onGotoViewRel
     self._hooked_rolling = rolling
@@ -340,14 +669,14 @@ end
 function FocusReader:turnPage(direction)
     local before = self:getLocation()
     self._page_direction = direction
-    local result = self._original_turn(self.ui.rolling, direction)
+    local result = self._original_turn(self._hooked_rolling, direction)
     -- Some versions send PageUpdate during the turn; others may defer it.
     local after = self:getLocation()
     if after ~= before and self.location ~= after then
         -- A platform that did not synchronously emit PageUpdate still needs
         -- the new page's text boxes. Avoid a duplicate repaint otherwise.
         self:refreshLines(true)
-        if self.style == "color" then self:applyNativeSelection() end
+        if self.style == "color" and not self:usesOverlayHighlight() then self:applyNativeSelection() end
         self:redraw(false)
     elseif after == before and self.style == "color" then
         -- End-of-book or failed turn: restore our visible temporary selection.
@@ -361,15 +690,16 @@ end
 function FocusReader:moveFocus(direction)
     if not self.enabled then return false end
     local active_count = self:getFocusLineCount()
+    local sequence = self.word_mode and self.style == "color" and not self.ui.paging and self.words or self.lines
     local step = self.step_mode == "block" and active_count or 1
-    local index, page_direction = Logic.advance(self.lines, self.index,
+    local index, page_direction = Logic.advance(sequence, self.index,
         active_count, direction, step)
     if page_direction then return self:turnPage(page_direction) end
     if index ~= self.index then
         local old_slot = self:getSlot()
         local old_native_bounds = self._native_bounds
         self.index = index
-        if self.style == "color" then self:applyNativeSelection() end
+        if self.style == "color" and not self:usesOverlayHighlight() then self:applyNativeSelection() end
         self:redraw(false, old_slot, old_native_bounds)
     end
     return true
@@ -378,12 +708,12 @@ end
 function FocusReader:start()
     if not self.supported then
         UIManager:show(require("ui/widget/infomessage"):new{
-            text = _("Focus Reader supports reflowable books such as EPUB."),
+            text = self:supportDiagnostics(),
         })
         return
     end
     if self.enabled then return end
-    if self.style == "color" and not self:canUseNativeColor() then
+    if self.style == "color" and not self.ui.paging and not self:usesOverlayHighlight() and not self:canUseNativeColor() then
         UIManager:show(require("ui/widget/infomessage"):new{
             text = _("This KOReader build does not expose the native selection API. Choose Spotlight Focus instead."),
         })
@@ -392,7 +722,14 @@ function FocusReader:start()
     self.enabled = true
     self._page_direction = nil
     self:refreshLines(true)
-    if self.style == "color" then
+    if #self.lines == 0 or (self.word_mode and self.style == "color" and not self.ui.paging and #(self.words or {}) == 0) then
+        self.enabled = false
+        UIManager:show(require("ui/widget/infomessage"):new{
+            text = _("No readable text positions were found on this page."),
+        })
+        return
+    end
+    if self.style == "color" and not self:usesOverlayHighlight() then
         self:setNativeSelectionColor()
         self:applyNativeSelection()
     end
@@ -419,7 +756,7 @@ function FocusReader:setLines(count)
     self.settings:saveSetting("line_count", self.line_count)
     if self.enabled and self.style == "color" then
         self.index = math.min(self.index, Logic.maxStart(self.lines, self.line_count))
-        self:applyNativeSelection()
+        if not self:usesOverlayHighlight() then self:applyNativeSelection() end
         self:redraw(true)
     end
 end
@@ -434,6 +771,14 @@ function FocusReader:setLegacyLines(count)
     end
 end
 
+function FocusReader:setSpotlightMaskColor(color)
+    color = color == "white" and "white" or "black"
+    if self.spotlight_mask_color == color then return end
+    self.spotlight_mask_color = color
+    self.settings:saveSetting("spotlight_mask_color", color)
+    if self.enabled and self.style == "mask" then self:redraw(true) end
+end
+
 function FocusReader:setSpotlightLayout(layout)
     layout = layout == "guide" and "guide" or "window"
     if self.spotlight_layout == layout then return end
@@ -442,13 +787,33 @@ function FocusReader:setSpotlightLayout(layout)
     if self.enabled and self.style == "mask" then self:redraw(true) end
 end
 
+function FocusReader:setPDFHighlightStyle(style)
+    style = style == "underline" and "underline" or "tint"
+    if self.pdf_highlight_style == style then return end
+    if self.enabled and self.style == "color" and not self.ui.paging then
+        self:clearNativeSelection()
+        self:restoreNativeSelectionColor()
+    end
+    self.pdf_highlight_style = style
+    self.settings:saveSetting("pdf_highlight_style", style)
+    if self.enabled and self.style == "color" then
+        if not self:usesOverlayHighlight() then
+            self:setNativeSelectionColor()
+            self:applyNativeSelection()
+        end
+        self:redraw(true)
+    end
+end
+
 function FocusReader:setColor(name)
     if not PALETTE[name] then return end
     self.color_name = name
     self.settings:saveSetting("color_name", name)
     if self.enabled and self.style == "color" then
-        self:setNativeSelectionColor()
-        self:applyNativeSelection()
+        if not self:usesOverlayHighlight() then
+            self:setNativeSelectionColor()
+            self:applyNativeSelection()
+        end
         self:redraw(true)
     end
 end
@@ -458,7 +823,7 @@ function FocusReader:setStyle(style)
     if self.style == style then return end
     -- On some KOReader/device builds native selection is unavailable. Never
     -- replace a working Spotlight session with a blank color highlight.
-    if self.enabled and style == "color" and not self:canUseNativeColor() then
+    if self.enabled and style == "color" and not self.ui.paging and self.pdf_highlight_style ~= "underline" and not self:canUseNativeColor() then
         UIManager:show(require("ui/widget/infomessage"):new{
             text = _("Native color highlighting is unavailable in this KOReader build. Spotlight Focus still works."),
         })
@@ -475,11 +840,21 @@ function FocusReader:setStyle(style)
         self.index = math.min(self.index,
             Logic.maxStart(self.lines, self:getFocusLineCount()))
     end
-    if self.enabled and style == "color" then
+    if self.enabled and style == "color" and not self:usesOverlayHighlight() then
         self:setNativeSelectionColor()
         self:applyNativeSelection()
     end
     if self.enabled then self:redraw(true) end
+end
+
+function FocusReader:setWordMode(enabled)
+    enabled = enabled == true
+    if self.word_mode == enabled then return end
+    local was_enabled = self.enabled
+    if was_enabled then self:stop() end
+    self.word_mode = enabled
+    self.settings:saveSetting("word_mode", enabled)
+    if was_enabled then self:start() end
 end
 
 function FocusReader:setStepMode(mode)
@@ -492,7 +867,7 @@ function FocusReader:onPageUpdate()
     local new_location = self:getLocation()
     local changed = new_location ~= self.location
     self:refreshLines(changed)
-    if self.style == "color" then self:applyNativeSelection() end
+    if self.style == "color" and not self:usesOverlayHighlight() then self:applyNativeSelection() end
     if changed then self:redraw(false) end
 end
 FocusReader.onPosUpdate = FocusReader.onPageUpdate
@@ -500,14 +875,14 @@ FocusReader.onPosUpdate = FocusReader.onPageUpdate
 function FocusReader:onScreenResize()
     if not self.enabled then return end
     self:refreshLines(false)
-    if self.style == "color" then self:applyNativeSelection() end
+    if self.style == "color" and not self:usesOverlayHighlight() then self:applyNativeSelection() end
     self:redraw(true)
 end
 
 function FocusReader:onReaderFooterVisibilityChange()
     if not self.enabled then return end
     self:refreshLines(false)
-    if self.style == "color" then self:applyNativeSelection() end
+    if self.style == "color" and not self:usesOverlayHighlight() then self:applyNativeSelection() end
     self:redraw(true)
 end
 
@@ -640,12 +1015,56 @@ function FocusReader:addToMainMenu(menu_items)
                 sub_item_table = {
                     { text = _("Color"), sub_item_table = color_items },
                     { text = _("Focused lines"), sub_item_table = color_line_items },
+                    { text = _("Highlight style (EPUB / PDF)"), sub_item_table = {
+                        { text = _("Native EPUB highlight / PDF light tint"),
+                          checked_func = function() return self.pdf_highlight_style == "tint" end,
+                          check_callback_closes_menu = true,
+                          callback = function(menu)
+                              self:closeSettingsMenu(menu)
+                              self:setPDFHighlightStyle("tint")
+                          end },
+                        { text = _("Underline only (EPUB / PDF)"),
+                          checked_func = function() return self.pdf_highlight_style == "underline" end,
+                          check_callback_closes_menu = true,
+                          callback = function(menu)
+                              self:closeSettingsMenu(menu)
+                              self:setPDFHighlightStyle("underline")
+                          end },
+                    } },
+                    { text = _("Word-by-word (no speech)"),
+                      checked_func = function() return self.word_mode end,
+                      check_callback_closes_menu = true,
+                      callback = function(menu)
+                          self:closeSettingsMenu(menu)
+                          self:setWordMode(not self.word_mode)
+                      end },
+                    { text = _("Word navigation diagnostic"),
+                      callback = function(menu)
+                          self:closeSettingsMenu(menu)
+                          self:showWordDiagnostics()
+                      end },
                 },
             },
             {
                 text = _("Spotlight Focus"),
                 sub_item_table = {
                     { text = _("Focused lines"), sub_item_table = spotlight_line_items },
+                    { text = _("Mask color"), sub_item_table = {
+                        { text = _("Black (default)"),
+                          checked_func = function() return self.spotlight_mask_color == "black" end,
+                          check_callback_closes_menu = true,
+                          callback = function(menu)
+                              self:closeSettingsMenu(menu)
+                              self:setSpotlightMaskColor("black")
+                          end },
+                        { text = _("White"),
+                          checked_func = function() return self.spotlight_mask_color == "white" end,
+                          check_callback_closes_menu = true,
+                          callback = function(menu)
+                              self:closeSettingsMenu(menu)
+                              self:setSpotlightMaskColor("white")
+                          end },
+                    } },
                 },
             },
         },
