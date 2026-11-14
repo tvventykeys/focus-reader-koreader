@@ -12,7 +12,7 @@ local stored = {
 local saved = {}
 package.preload['gettext']=function() return function(x) return x end end
 package.preload['datastorage']=function() return {getSettingsDir=function() return '/test' end} end
-package.preload['ffi/blitbuffer']=function() return {COLOR_BLACK='BLACK',COLOR_WHITE='WHITE'} end
+package.preload['ffi/blitbuffer']=function() return {COLOR_BLACK='BLACK',COLOR_WHITE='WHITE', ColorRGB32=function(r,g,b,a) return {r=r,g=g,b=b,a=a} end} end
 package.preload['device']=function() return {screen={getWidth=function() return 600 end, getHeight=function() return 900 end}} end
 package.preload['ui/geometry']=function() return {new=function(_,v) return v end} end
 package.preload['luasettings']=function()
@@ -232,4 +232,38 @@ items[3].sub_item_table[1].sub_item_table[1].callback(touch)
 check(reader_closed == 2 and touch_closed == 0,
     'color selection closes full reader menu and bottom config')
 ui.menu.onTapCloseMenu = nil
+
+-- PDF Highlight Focus draws temporary blended rectangles; it never calls
+-- CRengine selection and never creates persistent PDF annotations.
+local pdfdoc={configurable={text_wrap=0}}
+function pdfdoc:getPageCount() return 3 end
+function pdfdoc:getTextFromPositions(p0,p1)
+    check(p0.page==1 and p1.page==1,'PDF positions include page number')
+    return {sboxes={{{x0=30,y0=50,x1=180,y1=70},{x0=190,y0=50,x1=350,y1=70}},
+        {{x0=30,y0=90,x1=350,y1=110}}}}
+end
+local pdfpaging={current_page=1}
+local pdfturn=function(self,d) self.current_page=self.current_page+d; return true end
+pdfpaging.onGotoViewRel=pdfturn
+local pdfview={dialog={},view_mode='page',registerViewModule=function() end,
+    screenToPageTransform=function(_,p) return {page=1,x=p.x,y=p.y} end,
+    pageToScreenTransform=function(_,_,rect) return rect end}
+local pdfui={document=pdfdoc,paging=pdfpaging,menu={registerToMainMenu=function() end}}
+local pdf=setmetatable({ui=pdfui,view=pdfview},{__index=P})
+pdf:init()
+pdf.style='color'
+pdf:onReaderReady()
+check(pdf.supported,'PDF support without EPUB getCurrentPage')
+pdf:start()
+check(pdf.enabled and #pdf.lines==2,'PDF text boxes become two focus lines')
+local blended={}
+local pdfbb={blendRectRGB32=function(_,x,y,w,h,color)
+    blended[#blended+1]={x=x,y=y,w=w,h=h,color=color}
+end}
+pdf:paintTo(pdfbb,0,0)
+check(#blended==2,'PDF Highlight draws both text lines')
+check(blended[1].color.a>0 and blended[1].color.a<255,'PDF highlight blends transparently')
+check(type(blended[1].color.r)=='number','PDF highlight uses configured RGB color')
+pdf:stop()
+check(pdfpaging.onGotoViewRel==pdfturn,'PDF page-turn hook restored')
 print('PASS: '..checks..' mocked KOReader checks')
