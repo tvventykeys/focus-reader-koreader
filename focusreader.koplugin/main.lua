@@ -388,13 +388,25 @@ function FocusReader:paintTo(bb, x, y)
         local first = self.index
         local last = math.min(#self.lines, first + count - 1)
         local rgb = PALETTE[self.color_name] or PALETTE.yellow
-        local color = Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3],
-            math.floor(255 * self.opacity / 100 + 0.5))
+        -- KOReader composites this AFTER the PDF glyphs are rendered.
+        -- Strong blending washes out black text; use a very faint tint
+        -- and a more visible underline below each text box instead.
+        local tint = Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 26)
+        local underline = Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 165)
         for i = first, last do
             local line = self.lines[i]
             if line and line.area == self.lines[first].area then
-                bb:blendRectRGB32(x + math.floor(line.x), y + math.floor(line.y),
-                    math.ceil(line.w), math.ceil(line.h), color)
+                local left = x + math.floor(line.x)
+                local top = y + math.floor(line.y)
+                local width = math.ceil(line.w)
+                local height = math.ceil(line.h)
+                bb:blendRectRGB32(left, top, width, height, tint)
+                -- One-pixel separation keeps descenders readable.
+                local baseline = top + height + 1
+                local bottom = y + line.area.y + line.area.h
+                if baseline + 2 <= bottom then
+                    bb:blendRectRGB32(left, baseline, width, 2, underline)
+                end
             end
         end
         return
