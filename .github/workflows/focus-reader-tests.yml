@@ -1,5 +1,8 @@
 name: Focus Reader Lua checks
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - feature/spotlight-white-mask
