@@ -600,36 +600,30 @@ function FocusReader:shade(bb, x, y, w, h)
     if self.spotlight_mask_color == "image" then
         local base = self.spotlight_image_base_color == "white"
             and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
-        -- The selected color is the safe fallback under transparent pixels
-        -- and unavailable images; the image itself is separately toned.
+        -- KOReader's MuPDF image renderer supplies premultiplied alpha for
+        -- RGBA PNGs. Paint the chosen background first, then alpha-composite
+        -- the image; plain blitFrom discards transparency and turns clear
+        -- pixels black. Do not tint the illustrated opaque pixels.
         bb:paintRect(x, y, w, h, base)
         local image = self:loadMaskImage()
         if image then
-            -- Clip to the rendered screen-sized image, including on rotation.
             local ix, iy = math.max(0, x), math.max(0, y)
             local right = math.min(Screen:getWidth(), x + w)
             local bottom = math.min(Screen:getHeight(), y + h)
             if right > ix and bottom > iy then
-                local ok = pcall(bb.blitFrom, bb, image,
-                    ix, iy, ix, iy, right - ix, bottom - iy)
-                if ok then
-                    -- The source may be fully opaque. Painting the backing
-                    -- color *before* blitFrom cannot affect those pixels.
-                    -- Apply a visible light/dark wash over the image itself,
-                    -- using the same KOReader blend API as PDF highlights.
-                    local light = self.spotlight_image_base_color == "white"
-                    local tone = light
-                        and Blitbuffer.ColorRGB32(255, 255, 255, 140)
-                        or Blitbuffer.ColorRGB32(0, 0, 0, 140)
-                    if type(bb.blendRectRGB32) == "function" then
-                        local blended = pcall(bb.blendRectRGB32, bb,
-                            ix, iy, right - ix, bottom - iy, tone)
-                        if blended then return end
-                    end
-                    -- Never leave a misleading unchanged opaque image if the
-                    -- device cannot composite the selected backing color.
-                    bb:paintRect(x, y, w, h, base)
-                    return
+                local width, height = right - ix, bottom - iy
+                local ok, image_type = pcall(image.getType, image)
+                local has_alpha = ok and (image_type == Blitbuffer.TYPE_BBRGB32
+                    or image_type == Blitbuffer.TYPE_BB8A)
+                if has_alpha and type(bb.pmulalphablitFrom) == "function" then
+                    local painted = pcall(bb.pmulalphablitFrom, bb, image,
+                        ix, iy, ix, iy, width, height)
+                    if painted then return end
+                elseif not has_alpha and type(bb.blitFrom) == "function" then
+                    -- JPEG and fully opaque formats have no alpha to preserve.
+                    local painted = pcall(bb.blitFrom, bb, image,
+                        ix, iy, ix, iy, width, height)
+                    if painted then return end
                 end
             end
         end
