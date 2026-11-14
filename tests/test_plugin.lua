@@ -295,6 +295,29 @@ instance:refreshWords()
 check(#instance.words==2,'real Kobo duplicate XPointers collapse into two visible words')
 check(instance.words[1].word_text=='I' and instance.words[2].word_text=='showered',
     'deduplication prefers boxes without trailing space or comma')
+-- CRengine can split wasn't into [wasn] [’] [t]. A single
+-- navigation step must select the whole contraction, not its fragments.
+function doc:getWordFromPosition(pos)
+    if pos.y < 100 or pos.y > 124 then return nil end
+    local parts = {
+        {word='wasn',x=40,w=45},
+        {word='’',x=85,w=8},
+        {word='t',x=93,w=10},
+        {word=' ',x=103,w=12},
+        {word='ready',x=115,w=55},
+    }
+    for i,part in ipairs(parts) do
+        if pos.x >= part.x and pos.x < part.x + part.w then
+            return {word=part.word,sbox={x=part.x,y=100,w=part.w,h=24},
+                pos0='contraction'..i..'start',pos1='contraction'..i..'end'}
+        end
+    end
+end
+instance.lines={{x=40,y=100,w=130,h=24,area={x=0,y=0,w=400,h=400}}}
+instance:refreshWords()
+check(#instance.words==2,'apostrophe-separated contraction is one word, adjacent word stays separate')
+check(instance.words[1].word_text=='wasnt' and instance.words[1].w==63,
+    'curly apostrophe fragments merge into one geometry range')
 instance:stop()
 doc.getWordFromPosition=old_get_word
 instance:setWordMode(original_word_mode)
