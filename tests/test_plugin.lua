@@ -295,6 +295,26 @@ instance:refreshWords()
 check(#instance.words==2,'real Kobo duplicate XPointers collapse into two visible words')
 check(instance.words[1].word_text=='I' and instance.words[2].word_text=='showered',
     'deduplication prefers boxes without trailing space or comma')
+-- A punctuation-extended variant may have a shifted start and different
+-- XPointers; it must not become an extra button press after the word.
+function doc:getWordFromPosition(pos)
+    if pos.y < 100 or pos.y > 124 then return nil end
+    if pos.x >= 40 and pos.x < 130 then
+        local extended = pos.x >= 90
+        return {word=extended and 'better,”' or 'better',
+            sbox={x=extended and 42 or 40,y=100,w=extended and 88 or 78,h=24},
+            pos0=extended and 'better-punct-start' or 'better-start',
+            pos1=extended and 'better-punct-end' or 'better-end'}
+    end
+    if pos.x >= 140 and pos.x < 195 then
+        return {word='said',sbox={x=140,y=100,w=55,h=24},pos0='said-start',pos1='said-end'}
+    end
+end
+instance.lines={{x=40,y=100,w=155,h=24,area={x=0,y=0,w=400,h=400}}}
+instance:refreshWords()
+check(#instance.words==2,'shifted punctuation-extended word box does not add navigation stop')
+check(instance.words[1].word_text=='better' and instance.words[2].word_text=='said',
+    'punctuation variant is collapsed and next actual word remains')
 -- CRengine can split wasn't into [wasn] [’] [t]. A single
 -- navigation step must select the whole contraction, not its fragments.
 function doc:getWordFromPosition(pos)
