@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feature/spotlight-white-mask
+      - feature/guide-nonoverlap-groups
       - main
     tags:
       - 'v*'
