@@ -135,13 +135,57 @@ function FocusReader:refreshLines(reset_index)
     local areas = self:getPageAreas(viewport)
     self.areas = areas
     local end_area = areas[#areas]
-    local ok, text_boxes = pcall(self.ui.document.getTextFromPositions, self.ui.document,
-        { x = viewport.x, y = viewport.y },
-        { x = end_area.x + end_area.w, y = end_area.y + end_area.h }, true)
-    if ok and text_boxes and type(text_boxes.sboxes) == "table" then
-        for _, area in ipairs(areas) do
-            for _, line in ipairs(Logic.normaliseLines(text_boxes.sboxes, area)) do
-                self.lines[#self.lines + 1] = line
+    if self.ui.paging then
+        -- MuPDF/KOPT requires page-numbered coordinates, not EPUB screen
+        -- positions. Screen/page transforms account for zoom and reflow.
+        local page = self.ui.paging.current_page
+        if type(page) == "number"
+                and type(self.view.screenToPageTransform) == "function"
+                and type(self.view.pageToScreenTransform) == "function" then
+            local p0ok, p0 = pcall(self.view.screenToPageTransform, self.view,
+                {x=viewport.x+2, y=viewport.y+2})
+            local p1ok, p1 = pcall(self.view.screenToPageTransform, self.view,
+                {x=end_area.x+end_area.w-2, y=end_area.y+end_area.h-2})
+            if p0ok and p1ok and p0 and p1 and p0.page == p1.page then
+                local ok, result = pcall(self.ui.document.getTextFromPositions,
+                    self.ui.document, p0, p1)
+                if ok and result and type(result.sboxes) == "table" then
+                    local boxes = {}
+                    for _, line_boxes in ipairs(result.sboxes) do
+                        local group = type(line_boxes) == "table"
+                            and line_boxes.x == nil and line_boxes or {line_boxes}
+                        for _, b in ipairs(group) do
+                            if type(b) == "table" then
+                                local x0,y0 = b.x0 or b.x, b.y0 or b.y
+                                local x1,y1 = b.x1 or (b.x and b.w and b.x+b.w),
+                                    b.y1 or (b.y and b.h and b.y+b.h)
+                                if x0 and y0 and x1 and y1 then
+                                    local transformed, rect = pcall(self.view.pageToScreenTransform,
+                                        self.view, page, {x=x0,y=y0,w=x1-x0,h=y1-y0})
+                                    if transformed and rect and rect.w and rect.h then
+                                        boxes[#boxes+1] = rect
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    for _, area in ipairs(areas) do
+                        for _, line in ipairs(Logic.normaliseLines(boxes, area)) do
+                            self.lines[#self.lines+1] = line
+                        end
+                    end
+                end
+            end
+        end
+    else
+        local ok, text_boxes = pcall(self.ui.document.getTextFromPositions, self.ui.document,
+            { x = viewport.x, y = viewport.y },
+            { x = end_area.x + end_area.w, y = end_area.y + end_area.h }, true)
+        if ok and text_boxes and type(text_boxes.sboxes) == "table" then
+            for _, area in ipairs(areas) do
+                for _, line in ipairs(Logic.normaliseLines(text_boxes.sboxes, area)) do
+                    self.lines[#self.lines + 1] = line
+                end
             end
         end
     end
