@@ -225,7 +225,7 @@ function FocusReader:refreshLines(reset_index)
         self.words = nil
     end
     local active_count = self:getFocusLineCount()
-    local sequence = self.word_mode and self.style == "color" and self.words or self.lines
+    local sequence = self.word_mode and self.style == "color" and not self.ui.paging and self.words or self.lines
     if reset_index then
         self.index = self._page_direction == -1
             and Logic.maxStart(sequence, active_count) or 1
@@ -235,7 +235,7 @@ function FocusReader:refreshLines(reset_index)
 end
 
 function FocusReader:getFocusLineCount()
-    if self.word_mode and self.style == "color" then return 1 end
+    if self.word_mode and self.style == "color" and not self.ui.paging then return 1 end
     return self.style == "mask" and self.legacy_line_count or self.line_count
 end
 
@@ -271,7 +271,7 @@ function FocusReader:refreshWords()
 end
 
 function FocusReader:getSlot()
-    local sequence = self.word_mode and self.style == "color" and self.words or self.lines
+    local sequence = self.word_mode and self.style == "color" and not self.ui.paging and self.words or self.lines
     return Logic.slot(sequence or {}, self.index, self:getFocusLineCount())
 end
 
@@ -379,7 +379,27 @@ function FocusReader:shade(bb, x, y, w, h)
 end
 
 function FocusReader:paintTo(bb, x, y)
-    if not self.supported or not self.enabled or self.style ~= "mask" then return end
+    if not self.supported or not self.enabled then return end
+    if self.style == "color" and self.ui.paging then
+        -- Temporary, non-annotation PDF overlay. Unlike CRengine, MuPDF does
+        -- not expose a mutable selection color. Blend over the rendered page.
+        -- Restrict painting to actual text line boxes, not the full row.
+        local count = self:getFocusLineCount()
+        local first = self.index
+        local last = math.min(#self.lines, first + count - 1)
+        local rgb = PALETTE[self.color_name] or PALETTE.yellow
+        local color = Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3],
+            math.floor(255 * self.opacity / 100 + 0.5))
+        for i = first, last do
+            local line = self.lines[i]
+            if line and line.area == self.lines[first].area then
+                bb:blendRectRGB32(x + math.floor(line.x), y + math.floor(line.y),
+                    math.ceil(line.w), math.ceil(line.h), color)
+            end
+        end
+        return
+    end
+    if self.style ~= "mask" then return end
     local slot = self:getSlot()
     if not slot then return end -- No text: do not blackout an image-only page.
     for _, area in ipairs(self.areas) do
@@ -487,7 +507,7 @@ end
 function FocusReader:moveFocus(direction)
     if not self.enabled then return false end
     local active_count = self:getFocusLineCount()
-    local sequence = self.word_mode and self.style == "color" and self.words or self.lines
+    local sequence = self.word_mode and self.style == "color" and not self.ui.paging and self.words or self.lines
     local step = self.step_mode == "block" and active_count or 1
     local index, page_direction = Logic.advance(sequence, self.index,
         active_count, direction, step)
@@ -510,7 +530,7 @@ function FocusReader:start()
         return
     end
     if self.enabled then return end
-    if self.style == "color" and (self.ui.paging or not self:canUseNativeColor()) then
+    if self.style == "color" and not self.ui.paging and not self:canUseNativeColor() then
         UIManager:show(require("ui/widget/infomessage"):new{
             text = _("This KOReader build does not expose the native selection API. Choose Spotlight Focus instead."),
         })
@@ -519,14 +539,14 @@ function FocusReader:start()
     self.enabled = true
     self._page_direction = nil
     self:refreshLines(true)
-    if #self.lines == 0 or (self.word_mode and self.style == "color" and #(self.words or {}) == 0) then
+    if #self.lines == 0 or (self.word_mode and self.style == "color" and not self.ui.paging and #(self.words or {}) == 0) then
         self.enabled = false
         UIManager:show(require("ui/widget/infomessage"):new{
             text = _("No readable text positions were found on this page."),
         })
         return
     end
-    if self.style == "color" then
+    if self.style == "color" and not self.ui.paging then
         self:setNativeSelectionColor()
         self:applyNativeSelection()
     end
@@ -600,7 +620,7 @@ function FocusReader:setStyle(style)
     if self.style == style then return end
     -- On some KOReader/device builds native selection is unavailable. Never
     -- replace a working Spotlight session with a blank color highlight.
-    if self.enabled and style == "color" and not self:canUseNativeColor() then
+    if self.enabled and style == "color" and not self.ui.paging and not self:canUseNativeColor() then
         UIManager:show(require("ui/widget/infomessage"):new{
             text = _("Native color highlighting is unavailable in this KOReader build. Spotlight Focus still works."),
         })
@@ -617,7 +637,7 @@ function FocusReader:setStyle(style)
         self.index = math.min(self.index,
             Logic.maxStart(self.lines, self:getFocusLineCount()))
     end
-    if self.enabled and style == "color" then
+    if self.enabled and style == "color" and not self.ui.paging then
         self:setNativeSelectionColor()
         self:applyNativeSelection()
     end
