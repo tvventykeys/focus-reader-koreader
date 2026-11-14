@@ -334,7 +334,14 @@ function FocusReader:refreshWords()
     -- actual screen position and word content, not XPointers alone.
     local unique = {}
     local function wordCore(value)
-        return (value or ""):gsub("[%s%p]", "")
+        local core = (value or ""):gsub("[%s%p]", "")
+        -- Lua 5.1 %p is ASCII-only. Strip UTF-8 quotation and punctuation
+        -- marks before comparing overlapping engine word variants.
+        for _, mark in ipairs({"“", "”", "‘", "’", "ʼ", "„", "«", "»",
+                "…", "–", "—", "‐", "‑", "。", "、", "，", "！", "？"}) do
+            core = core:gsub(mark, "")
+        end
+        return core
     end
     for _, candidate in ipairs(self.words) do
         local duplicate = false
