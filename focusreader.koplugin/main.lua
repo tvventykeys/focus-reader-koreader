@@ -25,6 +25,7 @@ local FocusReader = Widget:extend{
     legacy_line_count = 3, -- Independent Spotlight Focus reading window.
     spotlight_layout = "window", -- window (above & below) or guide (below only).
     spotlight_mask_color = "black", -- black, white, or optional custom image.
+    spotlight_image_base_color = "black", -- independent background behind image.
     step_mode = "line",
     word_mode = false, -- optional native CRengine word selection
     refresh_mode = "focused", -- fixed smooth area refresh; no experimental modes
@@ -50,6 +51,8 @@ function FocusReader:init()
         and "guide" or "window"
     local mask = self.settings:readSetting("spotlight_mask_color")
     self.spotlight_mask_color = (mask == "white" or mask == "image") and mask or "black"
+    self.spotlight_image_base_color = self.settings:readSetting("spotlight_image_base_color") == "white"
+        and "white" or "black"
     self.spotlight_image_path = self.settings:readSetting("spotlight_image_path")
     self._mask_image = nil
     self._mask_image_key = nil
@@ -595,6 +598,11 @@ function FocusReader:shade(bb, x, y, w, h)
     x, y, w, h = math.floor(x), math.floor(y), math.floor(w), math.floor(h)
     if w <= 0 or h <= 0 then return end
     if self.spotlight_mask_color == "image" then
+        local base = self.spotlight_image_base_color == "white"
+            and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
+        -- Fill the entire mask region first; transparent margins and a
+        -- missing image now use the independently selected background color.
+        bb:paintRect(x, y, w, h, base)
         local image = self:loadMaskImage()
         if image then
             -- Clip to the rendered screen-sized image, including on rotation.
@@ -607,7 +615,8 @@ function FocusReader:shade(bb, x, y, w, h)
                 if ok then return end
             end
         end
-        -- Missing/corrupt image never makes text invisible or crashes paint.
+        -- The chosen background is already painted as a safe fallback.
+        return
     end
     local color = self.spotlight_mask_color == "white"
         and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
@@ -863,6 +872,17 @@ function FocusReader:setSpotlightMaskColor(color)
     if color ~= "image" then self:releaseMaskImage() end
     self.settings:saveSetting("spotlight_mask_color", color)
     if self.enabled and self.style == "mask" then self:redraw(true) end
+end
+
+function FocusReader:setSpotlightImageBaseColor(color)
+    color = color == "white" and "white" or "black"
+    if self.spotlight_image_base_color == color then return end
+    self.spotlight_image_base_color = color
+    self.settings:saveSetting("spotlight_image_base_color", color)
+    if self.enabled and self.style == "mask"
+            and self.spotlight_mask_color == "image" then
+        self:redraw(true)
+    end
 end
 
 function FocusReader:chooseSpotlightImage()
@@ -1197,6 +1217,26 @@ function FocusReader:addToMainMenu(menu_items)
                           callback = function(menu)
                               self:closeSettingsMenu(menu)
                               self:chooseSpotlightImage()
+                          end },
+                    } },
+                    { text = _("Image background color"), sub_item_table = {
+                        { text = _("Black (default)"),
+                          checked_func = function()
+                              return self.spotlight_image_base_color == "black"
+                          end,
+                          check_callback_closes_menu = true,
+                          callback = function(menu)
+                              self:closeSettingsMenu(menu)
+                              self:setSpotlightImageBaseColor("black")
+                          end },
+                        { text = _("White"),
+                          checked_func = function()
+                              return self.spotlight_image_base_color == "white"
+                          end,
+                          check_callback_closes_menu = true,
+                          callback = function(menu)
+                              self:closeSettingsMenu(menu)
+                              self:setSpotlightImageBaseColor("white")
                           end },
                     } },
                 },
