@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.1-beta.2 — preview
+
+- Added independent **Whole group** navigation to Spotlight Reading Window as well as Reading Guide.
+- Reading Window no longer relies on the legacy hidden block-step setting; each Spotlight layout has its own persisted one-line/whole-group preference.
+- Switching Spotlight layouts resets the focus index to avoid stale group boundaries.
+- Automated tests cover Reading Window's forward/backward group navigation and restoration of one-line mode.
+- Community Android/Kobo testing is still requested; custom background plugin compatibility is not included.
+
+
 ## v1.1.1-beta.1 — preview
 
 - Optional Reading Guide **Whole group** navigation, moving by the configured 1–5 lines without repeating previously read lines.
