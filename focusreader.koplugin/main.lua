@@ -395,7 +395,16 @@ function FocusReader:paintTo(bb, x, y)
         -- Strong blending washes out black text; use a very faint tint
         -- and a more visible underline below each text box instead.
         local tint = Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 26)
-        local underline = Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 165)
+        -- Underline-only needs more contrast on e-ink, especially yellow.
+        -- Use a dark, nearly opaque stroke while retaining the chosen hue
+        -- in tint mode. Keep it below the glyphs.
+        local underline_only = self.pdf_highlight_style == "underline"
+        local underline = underline_only
+            and Blitbuffer.ColorRGB32(
+                math.floor(rgb[1] * 0.32), math.floor(rgb[2] * 0.32),
+                math.floor(rgb[3] * 0.32), 235)
+            or Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 165)
+        local stroke = underline_only and 3 or 2
         for i = first, last do
             local line = self.lines[i]
             if line and line.area == self.lines[first].area then
@@ -409,8 +418,8 @@ function FocusReader:paintTo(bb, x, y)
                 -- One-pixel separation keeps descenders readable.
                 local baseline = top + height + 1
                 local bottom = y + line.area.y + line.area.h
-                if baseline + 2 <= bottom then
-                    bb:blendRectRGB32(left, baseline, width, 2, underline)
+                if baseline + stroke <= bottom then
+                    bb:blendRectRGB32(left, baseline, width, stroke, underline)
                 end
             end
         end
