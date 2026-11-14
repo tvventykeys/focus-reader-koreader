@@ -236,6 +236,7 @@ ui.menu.onTapCloseMenu = nil
 -- EPUB underline-only uses the same temporary overlay without CRengine
 -- selection; switching back restores native selection.
 instance:setStyle('color')
+instance:setWordMode(false) -- menu sweep toggled word mode; fixture has no word API
 instance:setPDFHighlightStyle('underline')
 instance:start()
 check(instance.enabled and instance:usesOverlayHighlight(),'EPUB underline overlay starts')
