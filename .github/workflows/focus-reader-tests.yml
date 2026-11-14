@@ -4,6 +4,7 @@ on:
     branches:
       - feature/spotlight-white-mask
       - feature/guide-nonoverlap-groups
+      - feature/window-whole-group-beta2
       - main
     tags:
       - 'v*'
