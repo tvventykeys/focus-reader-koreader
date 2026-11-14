@@ -7,8 +7,8 @@ Focus Reader moves a visual focus region down or up as you press KOReader's usua
 ## Modes
 
 - **Highlight Focus** (default): a gentle native text highlight with **Yellow, Orange, Green, Cyan, Blue, or Pink**. Choose **1–5 focused lines**. The shade has a fixed, gentle strength; no flashing/opacity controls are exposed.
-- **Spotlight Focus — Reading Window**: text above and below the focused 1–5 lines is masked **solid black**.
-- **Spotlight Focus — Reading Guide**: text above the reading position stays visible; everything below is masked **solid black**, like moving a sheet of paper down the page. The Spotlight line count is independent of Highlight Focus.
+- **Spotlight Focus — Reading Window**: text above and below the focused 1–5 lines is masked **solid black by default**, with an optional white mask.
+- **Spotlight Focus — Reading Guide**: text above the reading position stays visible; everything below is masked **solid black by default**, with an optional white mask, like moving a sheet of paper down the page. The Spotlight line count is independent of Highlight Focus.
 
 Focus Reader does **not** require a network connection, create annotations, read audio, or send any book text anywhere. It is independent of any narration or book-sync service.
 
@@ -33,7 +33,7 @@ Expected path (Kobo): `.adds/koreader/plugins/focusreader.koplugin/main.lua`
 - Start / Stop Focus Reader
 - Reading mode: Highlight Focus / Spotlight Focus: Reading Window / Spotlight Focus: Reading Guide
 - Highlight Focus: Color, Focused lines (1–5)
-- Spotlight Focus: Focused lines (1–5)
+- Spotlight Focus: Focused lines (1–5), Mask color (Black default / White optional)
 
 Use the same buttons or clicker inputs that already turn pages in KOReader. A click normally moves by one visual line; if you previously selected block movement in an older release, the stored preference is retained. Stop Focus Reader to restore normal page turning.
 
@@ -60,3 +60,16 @@ If Focus Reader does not appear, confirm the exact `focusreader.koplugin/main.lu
 The installable release ZIP contains `focusreader.koplugin/`. Source and tests are here in this repository. The `tests/` directory provides mocked Lua checks; those **do not replace hardware tests**. See [TESTING.md](TESTING.md) and [CHANGELOG.md](CHANGELOG.md).
 
 License: MIT. This project is not affiliated with KOReader or Kobo.
+
+
+## Development branch: accessibility requests (not a release)
+
+The `feature/spotlight-white-mask` branch adds optional white masking to both Spotlight layouts while retaining black as the default. This is **unverified on hardware**.
+
+Additional requests under investigation, **not implemented yet**:
+
+- **Word-by-word focus without speech:** requires verified word-level geometry and text selection APIs, including wrapped lines and bidirectional text; do not approximate positions with character widths.
+- **PDF / reflowed PDF:** current registration and navigation require rolling CRengine document APIs. KOReader PDF engines may not expose compatible text positions; image-only PDFs require OCR, which this plugin does not perform. Do not enable support without testing both fixed-layout and reflowed PDFs.
+- **PaperDots:** white mask drawing can cover dots painted earlier. Integration requires checking PaperDots rendering order and whether it exposes a supported overlay hook. Do not claim compatibility until both plugins are tested together.
+
+The development branch must pass Lua regression checks and a real KOReader/Kobo smoke test before packaging or release.
