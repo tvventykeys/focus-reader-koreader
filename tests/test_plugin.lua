@@ -260,6 +260,7 @@ local blended={}
 local pdfbb={blendRectRGB32=function(_,x,y,w,h,color)
     blended[#blended+1]={x=x,y=y,w=w,h=h,color=color}
 end}
+pdf:setPDFHighlightStyle('tint') -- earlier menu sweep persisted underline mode
 pdf:paintTo(pdfbb,0,0)
 check(#blended==4,'PDF Highlight draws faint tint and underline for each text line')
 pdf:setPDFHighlightStyle('underline')
