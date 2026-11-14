@@ -271,6 +271,30 @@ check(instance.words[instance.index].pos0~=w1 and instance.index==2,
     'one click advances directly to next real word')
 roll:onGotoViewRel(1)
 check(instance.index==3,'next click reaches accented word without punctuation stop')
+-- Reproduce real Kobo diagnostic: identical visible word with different
+-- XPointers and widths for trailing space/punctuation.
+function doc:getWordFromPosition(pos)
+    if pos.y < 100 or pos.y > 124 then return nil end
+    if pos.x >= 40 and pos.x < 67 then
+        local padded = pos.x >= 53
+        return {word=padded and 'I ' or 'I',
+            sbox={x=40,y=100,w=padded and 27 or 15,h=24},
+            pos0=padded and 'I-space-start' or 'I-start',
+            pos1=padded and 'I-space-end' or 'I-end'}
+    end
+    if pos.x >= 85 and pos.x < 185 then
+        local padded = pos.x >= 160
+        return {word=padded and 'showered,' or 'showered',
+            sbox={x=85,y=100,w=padded and 100 or 92,h=24},
+            pos0=padded and 'shower-comma-start' or 'shower-start',
+            pos1=padded and 'shower-comma-end' or 'shower-end'}
+    end
+end
+instance.lines={{x=40,y=100,w=150,h=24,area={x=0,y=0,w=400,h=400}}}
+instance:refreshWords()
+check(#instance.words==2,'real Kobo duplicate XPointers collapse into two visible words')
+check(instance.words[1].word_text=='I' and instance.words[2].word_text=='showered',
+    'deduplication prefers boxes without trailing space or comma')
 instance:stop()
 doc.getWordFromPosition=old_get_word
 instance:setWordMode(original_word_mode)
