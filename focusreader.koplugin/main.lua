@@ -25,6 +25,7 @@ local FocusReader = Widget:extend{
     spotlight_layout = "window", -- window (above & below) or guide (below only).
     spotlight_mask_color = "black", -- backward-compatible default; optional white.
     step_mode = "line",
+    guide_advance_mode = "line", -- guide only: optional non-overlapping groups
     word_mode = false, -- optional native CRengine word selection
     refresh_mode = "focused", -- fixed smooth area refresh; no experimental modes
     style = "color",
@@ -50,6 +51,7 @@ function FocusReader:init()
     self.spotlight_mask_color = self.settings:readSetting("spotlight_mask_color") == "white"
         and "white" or "black"
     self.step_mode = self.settings:readSetting("step_mode") == "block" and "block" or "line"
+    self.guide_advance_mode = self.settings:readSetting("guide_advance_mode") == "group" and "group" or "line"
     self.word_mode = self.settings:readSetting("word_mode") == true
     self.pdf_highlight_style = self.settings:readSetting("pdf_highlight_style") == "underline"
         and "underline" or "tint"
@@ -229,11 +231,13 @@ function FocusReader:refreshLines(reset_index)
     end
     local active_count = self:getFocusLineCount()
     local sequence = self.word_mode and self.style == "color" and not self.ui.paging and self.words or self.lines
+    local last = self:isGuideGroupMode()
+        and (1 + math.floor((math.max(1, #sequence) - 1) / active_count) * active_count)
+        or Logic.maxStart(sequence, active_count)
     if reset_index then
-        self.index = self._page_direction == -1
-            and Logic.maxStart(sequence, active_count) or 1
+        self.index = self._page_direction == -1 and last or 1
     else
-        self.index = math.min(self.index, Logic.maxStart(sequence, active_count))
+        self.index = math.min(self.index, last)
     end
 end
 
@@ -425,9 +429,14 @@ function FocusReader:showWordDiagnostics()
     })
 end
 
+function FocusReader:isGuideGroupMode()
+    return self.style == "mask" and self.spotlight_layout == "guide"
+        and self.guide_advance_mode == "group"
+end
+
 function FocusReader:getSlot()
     local sequence = self.word_mode and self.style == "color" and not self.ui.paging and self.words or self.lines
-    return Logic.slot(sequence or {}, self.index, self:getFocusLineCount())
+    return Logic.slot(sequence or {}, self.index, self:getFocusLineCount(), self:isGuideGroupMode())
 end
 
 -- Solid RGB is what the EPUB engine accepts for a native selection.
@@ -692,8 +701,13 @@ function FocusReader:moveFocus(direction)
     local active_count = self:getFocusLineCount()
     local sequence = self.word_mode and self.style == "color" and not self.ui.paging and self.words or self.lines
     local step = self.step_mode == "block" and active_count or 1
-    local index, page_direction = Logic.advance(sequence, self.index,
-        active_count, direction, step)
+    local index, page_direction
+    if self:isGuideGroupMode() then
+        index, page_direction = Logic.advanceGroup(sequence, self.index, active_count, direction)
+    else
+        index, page_direction = Logic.advance(sequence, self.index,
+            active_count, direction, step)
+    end
     if page_direction then return self:turnPage(page_direction) end
     if index ~= self.index then
         local old_slot = self:getSlot()
@@ -765,8 +779,9 @@ function FocusReader:setLegacyLines(count)
     self.legacy_line_count = Logic.setting(count, 1, 5, 3)
     self.settings:saveSetting("legacy_line_count", self.legacy_line_count)
     if self.enabled and self.style == "mask" then
-        self.index = math.min(self.index,
-            Logic.maxStart(self.lines, self.legacy_line_count))
+        self.index = math.min(self.index, self:isGuideGroupMode()
+            and (1 + math.floor((math.max(1, #self.lines) - 1) / self.legacy_line_count) * self.legacy_line_count)
+            or Logic.maxStart(self.lines, self.legacy_line_count))
         self:redraw(true)
     end
 end
@@ -855,6 +870,18 @@ function FocusReader:setWordMode(enabled)
     self.word_mode = enabled
     self.settings:saveSetting("word_mode", enabled)
     if was_enabled then self:start() end
+end
+
+function FocusReader:setGuideAdvanceMode(mode)
+    mode = mode == "group" and "group" or "line"
+    if self.guide_advance_mode == mode then return end
+    self.guide_advance_mode = mode
+    self.settings:saveSetting("guide_advance_mode", mode)
+    if self.enabled and self.style == "mask" and self.spotlight_layout == "guide" then
+        -- Restart at the first group instead of reusing an overlapping line index.
+        self.index = 1
+        self:redraw(true)
+    end
 end
 
 function FocusReader:setStepMode(mode)
@@ -1049,6 +1076,22 @@ function FocusReader:addToMainMenu(menu_items)
                 text = _("Spotlight Focus"),
                 sub_item_table = {
                     { text = _("Focused lines"), sub_item_table = spotlight_line_items },
+                    { text = _("Reading Guide: advance by"), sub_item_table = {
+                        { text = _("One line (default)"),
+                          checked_func = function() return self.guide_advance_mode == "line" end,
+                          check_callback_closes_menu = true,
+                          callback = function(menu)
+                              self:closeSettingsMenu(menu)
+                              self:setGuideAdvanceMode("line")
+                          end },
+                        { text = _("Whole group (no repeated lines)"),
+                          checked_func = function() return self.guide_advance_mode == "group" end,
+                          check_callback_closes_menu = true,
+                          callback = function(menu)
+                              self:closeSettingsMenu(menu)
+                              self:setGuideAdvanceMode("group")
+                          end },
+                    } },
                     { text = _("Mask color"), sub_item_table = {
                         { text = _("Black (default)"),
                           checked_func = function() return self.spotlight_mask_color == "black" end,
