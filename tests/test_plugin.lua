@@ -71,7 +71,8 @@ check(menu_items.focusreader.sorting_hint=='tools','Tools menu location')
 local items=menu_items.focusreader.sub_item_table
 check(#items==4,'four simple menu sections')
 check(items[2].text=='Reading mode' and #items[2].sub_item_table==3,'reading mode includes both spotlight layouts')
-check(items[3].text=='Highlight Focus' and #items[3].sub_item_table==4,'highlight includes PDF style and word mode')
+check(items[3].text=='Highlight Focus' and #items[3].sub_item_table==5,'highlight includes PDF style, word mode and diagnostics')
+check(items[3].sub_item_table[5].text=='Word navigation diagnostic','diagnostic menu item registered')
 check(items[4].text=='Spotlight Focus' and #items[4].sub_item_table==2,'spotlight lines and mask color')
 check(items[3].sub_item_table[1].text=='Color' and items[3].sub_item_table[2].text=='Focused lines','highlight color + lines labels')
 local labels={}
