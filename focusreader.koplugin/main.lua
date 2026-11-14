@@ -7,6 +7,7 @@ local Device = require("device")
 local Geom = require("ui/geometry")
 local LuaSettings = require("luasettings")
 local UIManager = require("ui/uimanager")
+local RenderImage = require("ui/renderimage")
 local Widget = require("ui/widget/widget")
 local _ = require("gettext")
 
@@ -23,7 +24,7 @@ local FocusReader = Widget:extend{
     opacity = 56,         -- Fixed original default; never read old opacity preferences.
     legacy_line_count = 3, -- Independent Spotlight Focus reading window.
     spotlight_layout = "window", -- window (above & below) or guide (below only).
-    spotlight_mask_color = "black", -- backward-compatible default; optional white.
+    spotlight_mask_color = "black", -- black, white, or optional custom image.
     step_mode = "line",
     word_mode = false, -- optional native CRengine word selection
     refresh_mode = "focused", -- fixed smooth area refresh; no experimental modes
@@ -47,8 +48,11 @@ function FocusReader:init()
     -- settings saved below 100: Spotlight Focus is now ALWAYS fully black.
     self.spotlight_layout = self.settings:readSetting("spotlight_layout") == "guide"
         and "guide" or "window"
-    self.spotlight_mask_color = self.settings:readSetting("spotlight_mask_color") == "white"
-        and "white" or "black"
+    local mask = self.settings:readSetting("spotlight_mask_color")
+    self.spotlight_mask_color = (mask == "white" or mask == "image") and mask or "black"
+    self.spotlight_image_path = self.settings:readSetting("spotlight_image_path")
+    self._mask_image = nil
+    self._mask_image_key = nil
     self.step_mode = self.settings:readSetting("step_mode") == "block" and "block" or "line"
     self.word_mode = self.settings:readSetting("word_mode") == true
     self.pdf_highlight_style = self.settings:readSetting("pdf_highlight_style") == "underline"
@@ -550,11 +554,61 @@ function FocusReader:applyNativeSelection()
     return true
 end
 
--- Only solid black paint is used in Spotlight Focus. No alpha blending,
--- gray artifacts or adjustable darkness settings remain in this mode.
+-- The selected image is decoded only once per device orientation and file.
+-- We draw only the masked rectangles, leaving the reading window untouched.
+function FocusReader:releaseMaskImage()
+    if self._mask_image and type(self._mask_image.free) == "function" then
+        pcall(self._mask_image.free, self._mask_image)
+    end
+    self._mask_image, self._mask_image_key = nil, nil
+end
+
+function FocusReader:loadMaskImage()
+    local path = self.spotlight_image_path
+    if self.spotlight_mask_color ~= "image" or type(path) ~= "string" or path == "" then
+        return nil
+    end
+    local width, height = Screen:getWidth(), Screen:getHeight()
+    local key = path .. ":" .. tostring(width) .. "x" .. tostring(height)
+    if self._mask_image and self._mask_image_key == key then return self._mask_image end
+    self:releaseMaskImage()
+    local ok, image = pcall(RenderImage.renderImageFile, RenderImage, path, false, width, height)
+    if ok and image and type(image.getWidth) == "function"
+            and type(image.getHeight) == "function" then
+        if image:getWidth() ~= width or image:getHeight() ~= height then
+            -- The renderer may preserve source aspect ratio. Fit the image
+            -- explicitly to the screen so mask regions use matching pixels.
+            local resized, scaled = pcall(RenderImage.scaleBlitBuffer,
+                RenderImage, image, width, height)
+            image = resized and scaled or nil
+        end
+        if image and image:getWidth() == width and image:getHeight() == height then
+            self._mask_image, self._mask_image_key = image, key
+        end
+    elseif ok and image and type(image.free) == "function" then
+        pcall(image.free, image)
+    end
+    return self._mask_image
+end
+
 function FocusReader:shade(bb, x, y, w, h)
-    w, h = math.floor(w), math.floor(h)
+    x, y, w, h = math.floor(x), math.floor(y), math.floor(w), math.floor(h)
     if w <= 0 or h <= 0 then return end
+    if self.spotlight_mask_color == "image" then
+        local image = self:loadMaskImage()
+        if image then
+            -- Clip to the rendered screen-sized image, including on rotation.
+            local ix, iy = math.max(0, x), math.max(0, y)
+            local right = math.min(Screen:getWidth(), x + w)
+            local bottom = math.min(Screen:getHeight(), y + h)
+            if right > ix and bottom > iy then
+                local ok = pcall(bb.blitFrom, bb, image,
+                    ix, iy, ix, iy, right - ix, bottom - iy)
+                if ok then return end
+            end
+        end
+        -- Missing/corrupt image never makes text invisible or crashes paint.
+    end
     local color = self.spotlight_mask_color == "white"
         and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
     return bb:paintRect(x, y, w, h, color)
@@ -776,6 +830,7 @@ function FocusReader:stop(skip_redraw)
         self:clearNativeSelection()
         self:restoreNativeSelectionColor()
     end
+    self:releaseMaskImage()
     if was_enabled and not skip_redraw then self:redraw(true) end
 end
 
@@ -802,11 +857,33 @@ function FocusReader:setLegacyLines(count)
 end
 
 function FocusReader:setSpotlightMaskColor(color)
-    color = color == "white" and "white" or "black"
+    color = (color == "white" or color == "image") and color or "black"
     if self.spotlight_mask_color == color then return end
     self.spotlight_mask_color = color
+    if color ~= "image" then self:releaseMaskImage() end
     self.settings:saveSetting("spotlight_mask_color", color)
     if self.enabled and self.style == "mask" then self:redraw(true) end
+end
+
+function FocusReader:chooseSpotlightImage()
+    -- Windows E:\\.adds\\koreader\\screensavers maps to this folder on Kobo.
+    -- Other devices use their own KOReader data directory.
+    local folder = DataStorage:getDataDir() .. "/screensavers"
+    local current = self.spotlight_image_path or folder
+    local picker = require("apps/filemanager/filemanagerutil")
+    local filter = function(name)
+        if type(name) ~= "string" then return false end
+        local suffix = name:lower():match("%.([^.]+)$")
+        return ({png=true, jpg=true, jpeg=true, webp=true, bmp=true})[suffix] == true
+    end
+    picker.showChooseDialog(_("Choose Spotlight background image"), function(path)
+        if type(path) ~= "string" or path == "" then return end
+        self.spotlight_image_path = path
+        self.settings:saveSetting("spotlight_image_path", path)
+        self:releaseMaskImage()
+        self:setSpotlightMaskColor("image")
+        if self.enabled and self.style == "mask" then self:redraw(true) end
+    end, current, nil, filter)
 end
 
 function FocusReader:setSpotlightLayout(layout)
@@ -906,6 +983,7 @@ end
 FocusReader.onPosUpdate = FocusReader.onPageUpdate
 
 function FocusReader:onScreenResize()
+    self:releaseMaskImage()
     if not self.enabled then return end
     if not self:refreshLines(false) and self.ui.paging then
         self:stop()
@@ -927,6 +1005,7 @@ end
 
 function FocusReader:onCloseDocument()
     self:stop(true)
+    self:releaseMaskImage()
     self.supported = false
 end
 
@@ -1102,6 +1181,22 @@ function FocusReader:addToMainMenu(menu_items)
                           callback = function(menu)
                               self:closeSettingsMenu(menu)
                               self:setSpotlightMaskColor("white")
+                          end },
+                        { text = _("Custom image (from screensavers)"),
+                          checked_func = function() return self.spotlight_mask_color == "image" end,
+                          check_callback_closes_menu = true,
+                          callback = function(menu)
+                              self:closeSettingsMenu(menu)
+                              if self.spotlight_image_path then
+                                  self:setSpotlightMaskColor("image")
+                              else
+                                  self:chooseSpotlightImage()
+                              end
+                          end },
+                        { text = _("Choose custom image..."),
+                          callback = function(menu)
+                              self:closeSettingsMenu(menu)
+                              self:chooseSpotlightImage()
                           end },
                     } },
                 },
