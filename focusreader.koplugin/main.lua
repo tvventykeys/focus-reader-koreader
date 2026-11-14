@@ -25,6 +25,7 @@ local FocusReader = Widget:extend{
     spotlight_layout = "window", -- window (above & below) or guide (below only).
     spotlight_mask_color = "black", -- backward-compatible default; optional white.
     step_mode = "line",
+    word_mode = false, -- optional native CRengine word selection
     refresh_mode = "focused", -- fixed smooth area refresh; no experimental modes
     style = "color",
     color_name = "yellow",
@@ -48,6 +49,7 @@ function FocusReader:init()
     self.spotlight_mask_color = self.settings:readSetting("spotlight_mask_color") == "white"
         and "white" or "black"
     self.step_mode = self.settings:readSetting("step_mode") == "block" and "block" or "line"
+    self.word_mode = self.settings:readSetting("word_mode") == true
     -- One refresh path only, regardless of previously saved experiment keys.
     -- Never start precise/wide_wait, screen-wide or accelerated refreshes.
     self.refresh_mode = "focused"
@@ -62,11 +64,11 @@ end
 
 function FocusReader:isSupported()
     local doc = self.ui and self.ui.document
-    return self.ui and self.ui.rolling and doc
+    return self.ui and (self.ui.rolling or self.ui.paging) and doc
         and type(doc.getTextFromPositions) == "function"
         and type(doc.getCurrentPage) == "function"
-        and type(doc.getCurrentPos) == "function"
-        and type(doc.getVisiblePageCount) == "function"
+        and (self.ui.paging or type(doc.getCurrentPos) == "function")
+        and (self.ui.paging or type(doc.getVisiblePageCount) == "function")
         and type(doc.getPageCount) == "function"
         and self.view ~= nil
 end
@@ -97,6 +99,7 @@ end
 
 function FocusReader:getLocation()
     if not self.supported or not self.ui.document then return nil end
+    if self.ui.paging then return self.ui.paging.current_page end
     if self.view.view_mode == "scroll" then return self.ui.document:getCurrentPos() end
     return self.ui.document:getCurrentPage(true)
 end
@@ -111,7 +114,7 @@ end
 
 function FocusReader:getPageAreas(viewport)
     local doc = self.ui.document
-    if self.view.view_mode == "scroll" or doc:getVisiblePageCount() == 1 then
+    if self.ui.paging or self.view.view_mode == "scroll" or doc:getVisiblePageCount() == 1 then
         return { viewport }
     end
     local half = math.floor(viewport.w / 2)
@@ -142,6 +145,11 @@ function FocusReader:refreshLines(reset_index)
             end
         end
     end
+    if self.word_mode and self.style == "color" and not self.ui.paging then
+        self:refreshWords()
+    else
+        self.words = nil
+    end
     local active_count = self:getFocusLineCount()
     if reset_index then
         self.index = self._page_direction == -1
@@ -152,7 +160,39 @@ function FocusReader:refreshLines(reset_index)
 end
 
 function FocusReader:getFocusLineCount()
+    if self.word_mode and self.style == "color" then return 1 end
     return self.style == "mask" and self.legacy_line_count or self.line_count
+end
+
+-- Discover real words from CRengine, never estimate word widths from text.
+-- Each candidate is checked against the engine-provided word box.
+function FocusReader:refreshWords()
+    self.words = {}
+    local doc = self.ui.document
+    if type(doc.getWordFromPosition) ~= "function" then return end
+    local seen = {}
+    for _, line in ipairs(self.lines) do
+        local y = math.floor(line.y + line.h / 2)
+        local stride = math.max(2, math.floor(line.h / 3))
+        for x = math.floor(line.x + 1), math.floor(line.x + line.w - 1), stride do
+            local ok, word = pcall(doc.getWordFromPosition, doc, {x=x,y=y})
+            local b = ok and word and word.sbox
+            if b and word.pos0 and word.pos1 and type(word.word) == "string"
+                    and word.word ~= "" and b.w and b.h and b.w > 0 and b.h > 0
+                    and x >= b.x and x < b.x + b.w and y >= b.y and y < b.y + b.h then
+                local key = tostring(word.pos0) .. ":" .. tostring(word.pos1)
+                if not seen[key] then
+                    seen[key] = true
+                    self.words[#self.words+1] = {x=b.x,y=b.y,w=b.w,h=b.h,
+                        area=line.area,pos0=word.pos0,pos1=word.pos1}
+                end
+            end
+        end
+    end
+    table.sort(self.words, function(a,b)
+        if math.abs(a.y-b.y) <= math.min(a.h,b.h)/2 then return a.x < b.x end
+        return a.y < b.y
+    end)
 end
 
 function FocusReader:getSlot()
@@ -204,13 +244,13 @@ end
 -- One selection spans the visible lines, with text-coordinate endpoints.
 function FocusReader:applyNativeSelection()
     if not self.enabled or self.style ~= "color" then return false end
-    local first = self.lines[self.index]
+    local first = self.word_mode and self.words and self.words[self.index] or self.lines[self.index]
     if not first then
         self:clearNativeSelection()
         return false
     end
     local last = first
-    for j = self.index + 1, math.min(#self.lines, self.index + self.line_count - 1) do
+    for j = self.index + 1, self.word_mode and self.index or math.min(#self.lines, self.index + self.line_count - 1) do
         if self.lines[j].area ~= first.area then break end
         last = self.lines[j]
     end
@@ -223,8 +263,13 @@ function FocusReader:applyNativeSelection()
         y = math.floor(last.y + last.h / 2),
     }
     local doc = self.ui.document
-    local ok, range = pcall(doc.getTextFromPositions, doc,
-        start_pos, end_pos, true)
+    local ok, range
+    if self.word_mode then
+        ok, range = true, {pos0=first.pos0,pos1=first.pos1,sboxes={first}}
+    else
+        ok, range = pcall(doc.getTextFromPositions, doc,
+            start_pos, end_pos, true)
+    end
     if not ok or type(range) ~= "table" or not range.pos0 or not range.pos1 then
         self:clearNativeSelection()
         return false
@@ -318,7 +363,7 @@ end
 -- Forward the original page-turn implementation when the spotlight reaches
 -- its end; restore the exact original function on Stop or document close.
 function FocusReader:installTurnHook()
-    local rolling = self.ui.rolling
+    local rolling = self.ui.rolling or self.ui.paging
     if self._turn_wrapper then return end
     self._original_turn = rolling.onGotoViewRel
     self._hooked_rolling = rolling
@@ -345,7 +390,7 @@ end
 function FocusReader:turnPage(direction)
     local before = self:getLocation()
     self._page_direction = direction
-    local result = self._original_turn(self.ui.rolling, direction)
+    local result = self._original_turn(self._hooked_rolling, direction)
     -- Some versions send PageUpdate during the turn; others may defer it.
     local after = self:getLocation()
     if after ~= before and self.location ~= after then
@@ -366,8 +411,9 @@ end
 function FocusReader:moveFocus(direction)
     if not self.enabled then return false end
     local active_count = self:getFocusLineCount()
+    local sequence = self.word_mode and self.style == "color" and self.words or self.lines
     local step = self.step_mode == "block" and active_count or 1
-    local index, page_direction = Logic.advance(self.lines, self.index,
+    local index, page_direction = Logic.advance(sequence, self.index,
         active_count, direction, step)
     if page_direction then return self:turnPage(page_direction) end
     if index ~= self.index then
@@ -383,12 +429,12 @@ end
 function FocusReader:start()
     if not self.supported then
         UIManager:show(require("ui/widget/infomessage"):new{
-            text = _("Focus Reader supports reflowable books such as EPUB."),
+            text = _("This document does not expose supported text geometry."),
         })
         return
     end
     if self.enabled then return end
-    if self.style == "color" and not self:canUseNativeColor() then
+    if self.style == "color" and (self.ui.paging or not self:canUseNativeColor()) then
         UIManager:show(require("ui/widget/infomessage"):new{
             text = _("This KOReader build does not expose the native selection API. Choose Spotlight Focus instead."),
         })
@@ -397,6 +443,13 @@ function FocusReader:start()
     self.enabled = true
     self._page_direction = nil
     self:refreshLines(true)
+    if #self.lines == 0 or (self.word_mode and self.style == "color" and #(self.words or {}) == 0) then
+        self.enabled = false
+        UIManager:show(require("ui/widget/infomessage"):new{
+            text = _("No readable text positions were found on this page."),
+        })
+        return
+    end
     if self.style == "color" then
         self:setNativeSelectionColor()
         self:applyNativeSelection()
@@ -493,6 +546,16 @@ function FocusReader:setStyle(style)
         self:applyNativeSelection()
     end
     if self.enabled then self:redraw(true) end
+end
+
+function FocusReader:setWordMode(enabled)
+    enabled = enabled == true
+    if self.word_mode == enabled then return end
+    local was_enabled = self.enabled
+    if was_enabled then self:stop() end
+    self.word_mode = enabled
+    self.settings:saveSetting("word_mode", enabled)
+    if was_enabled then self:start() end
 end
 
 function FocusReader:setStepMode(mode)
@@ -653,6 +716,13 @@ function FocusReader:addToMainMenu(menu_items)
                 sub_item_table = {
                     { text = _("Color"), sub_item_table = color_items },
                     { text = _("Focused lines"), sub_item_table = color_line_items },
+                    { text = _("Word-by-word (no speech)"),
+                      checked_func = function() return self.word_mode end,
+                      check_callback_closes_menu = true,
+                      callback = function(menu)
+                          self:closeSettingsMenu(menu)
+                          self:setWordMode(not self.word_mode)
+                      end },
                 },
             },
             {
