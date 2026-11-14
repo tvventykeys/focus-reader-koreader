@@ -340,14 +340,14 @@ function FocusReader:showWordDiagnostics()
     for i = first, last do
         local entry = entries[i]
         local value = tostring(entry.word_text or "?")
-        value = value:gsub("\\n", " "):gsub("\\r", " ")
+        value = value:gsub("\n", " "):gsub("\r", " ")
         if #value > 45 then value = value:sub(1,45) .. "..." end
         output[#output+1] = string.format("%s%d: [%s] x=%d y=%d w=%d",
             i == self.index and "> " or "  ", i, value,
             entry.x or -1, entry.y or -1, entry.w or -1)
     end
     UIManager:show(require("ui/widget/infomessage"):new{
-        text = table.concat(output, "\\n"),
+        text = table.concat(output, "\n"),
     })
 end
 
