@@ -261,7 +261,9 @@ local pdfbb={blendRectRGB32=function(_,x,y,w,h,color)
     blended[#blended+1]={x=x,y=y,w=w,h=h,color=color}
 end}
 pdf:paintTo(pdfbb,0,0)
-check(#blended==2,'PDF Highlight draws both text lines')
+check(#blended==4,'PDF Highlight draws faint tint and underline for each text line')
+check(blended[1].color.a==26,'PDF text tint remains light enough for readability')
+check(blended[2].color.a==165 and blended[2].h==2,'PDF underline is stronger but stays below glyphs')
 check(blended[1].color.a>0 and blended[1].color.a<255,'PDF highlight blends transparently')
 check(type(blended[1].color.r)=='number','PDF highlight uses configured RGB color')
 pdf:stop()
