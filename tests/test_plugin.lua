@@ -201,7 +201,9 @@ local function eachLeaf(list)
     for _, entry in ipairs(list) do
         if entry.sub_item_table then
             eachLeaf(entry.sub_item_table)
-        elseif entry.callback then
+        elseif entry.callback and entry.text ~= 'Word navigation diagnostic' then
+            -- Informational action deliberately opens InfoMessage; test its
+            -- registration separately rather than treating it as a setting.
             if entry.checked_func then
                 check(entry.check_callback_closes_menu == true,
                     'checked entry suppresses updateItems on menu close')
