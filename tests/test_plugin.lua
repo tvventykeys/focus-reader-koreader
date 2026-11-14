@@ -381,6 +381,7 @@ check(chooser_folder=='/test/koreader/screensavers',
     'image chooser opens KOReader screensavers directory')
 check(chooser_filter('foo.PNG') and chooser_filter('image.jpeg')
     and not chooser_filter('document.pdf'), 'chooser filters supported image formats')
+instance:setSpotlightImageBaseColor('black')
 instance:start()
 local image_blits={}
 local image_bb={
