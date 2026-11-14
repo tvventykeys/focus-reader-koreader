@@ -574,8 +574,17 @@ function FocusReader:loadMaskImage()
     self:releaseMaskImage()
     local ok, image = pcall(RenderImage.renderImageFile, RenderImage, path, false, width, height)
     if ok and image and type(image.getWidth) == "function"
-            and image:getWidth() == width and image:getHeight() == height then
-        self._mask_image, self._mask_image_key = image, key
+            and type(image.getHeight) == "function" then
+        if image:getWidth() ~= width or image:getHeight() ~= height then
+            -- The renderer may preserve source aspect ratio. Fit the image
+            -- explicitly to the screen so mask regions use matching pixels.
+            local resized, scaled = pcall(RenderImage.scaleBlitBuffer,
+                RenderImage, image, width, height)
+            image = resized and scaled or nil
+        end
+        if image and image:getWidth() == width and image:getHeight() == height then
+            self._mask_image, self._mask_image_key = image, key
+        end
     elseif ok and image and type(image.free) == "function" then
         pcall(image.free, image)
     end
