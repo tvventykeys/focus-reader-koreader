@@ -314,7 +314,7 @@ function FocusReader:refreshWords()
                 if not seen[key] then
                     seen[key] = true
                     self.words[#self.words+1] = {x=b.x,y=b.y,w=b.w,h=b.h,
-                        area=line.area,pos0=word.pos0,pos1=word.pos1}
+                        area=line.area,pos0=word.pos0,pos1=word.pos1,word_text=word.word}
                 end
             end
         end
@@ -323,6 +323,32 @@ function FocusReader:refreshWords()
         if math.abs(a.y-b.y) <= math.min(a.h,b.h)/2 then return a.x < b.x end
         return a.y < b.y
     end)
+end
+
+-- Read-only, on-screen diagnostic for real-device word navigation.
+-- No book text is saved, transmitted or written to a log.
+function FocusReader:showWordDiagnostics()
+    local entries = self.words or {}
+    local output = {
+        _("Word navigation diagnostic (current page only)"),
+        _("Accepted words: ") .. tostring(#entries),
+        _("Current index: ") .. tostring(self.index or 1),
+        _("Mode: ") .. (self.word_mode and "word" or "line"),
+    }
+    local first = math.max(1, (self.index or 1) - 3)
+    local last = math.min(#entries, (self.index or 1) + 5)
+    for i = first, last do
+        local entry = entries[i]
+        local value = tostring(entry.word_text or "?")
+        value = value:gsub("\\n", " "):gsub("\\r", " ")
+        if #value > 45 then value = value:sub(1,45) .. "..." end
+        output[#output+1] = string.format("%s%d: [%s] x=%d y=%d w=%d",
+            i == self.index and "> " or "  ", i, value,
+            entry.x or -1, entry.y or -1, entry.w or -1)
+    end
+    UIManager:show(require("ui/widget/infomessage"):new{
+        text = table.concat(output, "\\n"),
+    })
 end
 
 function FocusReader:getSlot()
@@ -937,6 +963,11 @@ function FocusReader:addToMainMenu(menu_items)
                       callback = function(menu)
                           self:closeSettingsMenu(menu)
                           self:setWordMode(not self.word_mode)
+                      end },
+                    { text = _("Word navigation diagnostic"),
+                      callback = function(menu)
+                          self:closeSettingsMenu(menu)
+                          self:showWordDiagnostics()
                       end },
                 },
             },
