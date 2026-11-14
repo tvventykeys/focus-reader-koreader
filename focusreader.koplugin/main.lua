@@ -600,8 +600,8 @@ function FocusReader:shade(bb, x, y, w, h)
     if self.spotlight_mask_color == "image" then
         local base = self.spotlight_image_base_color == "white"
             and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
-        -- Fill the entire mask region first; transparent margins and a
-        -- missing image now use the independently selected background color.
+        -- The selected color is the safe fallback under transparent pixels
+        -- and unavailable images; the image itself is separately toned.
         bb:paintRect(x, y, w, h, base)
         local image = self:loadMaskImage()
         if image then
@@ -612,7 +612,25 @@ function FocusReader:shade(bb, x, y, w, h)
             if right > ix and bottom > iy then
                 local ok = pcall(bb.blitFrom, bb, image,
                     ix, iy, ix, iy, right - ix, bottom - iy)
-                if ok then return end
+                if ok then
+                    -- The source may be fully opaque. Painting the backing
+                    -- color *before* blitFrom cannot affect those pixels.
+                    -- Apply a visible light/dark wash over the image itself,
+                    -- using the same KOReader blend API as PDF highlights.
+                    local light = self.spotlight_image_base_color == "white"
+                    local tone = light
+                        and Blitbuffer.ColorRGB32(255, 255, 255, 140)
+                        or Blitbuffer.ColorRGB32(0, 0, 0, 140)
+                    if type(bb.blendRectRGB32) == "function" then
+                        local blended = pcall(bb.blendRectRGB32, bb,
+                            ix, iy, right - ix, bottom - iy, tone)
+                        if blended then return end
+                    end
+                    -- Never leave a misleading unchanged opaque image if the
+                    -- device cannot composite the selected backing color.
+                    bb:paintRect(x, y, w, h, base)
+                    return
+                end
             end
         end
         -- The chosen background is already painted as a safe fallback.
