@@ -381,15 +381,20 @@ function FocusReader:shade(bb, x, y, w, h)
     return bb:paintRect(x, y, w, h, color)
 end
 
+function FocusReader:usesOverlayHighlight()
+    return self.style == "color" and (self.ui.paging or self.pdf_highlight_style == "underline")
+end
+
 function FocusReader:paintTo(bb, x, y)
     if not self.supported or not self.enabled then return end
-    if self.style == "color" and self.ui.paging then
+    if self:usesOverlayHighlight() then
         -- Temporary, non-annotation PDF overlay. Unlike CRengine, MuPDF does
         -- not expose a mutable selection color. Blend over the rendered page.
         -- Restrict painting to actual text line boxes, not the full row.
         local count = self:getFocusLineCount()
+        local sequence = self.word_mode and not self.ui.paging and self.words or self.lines
         local first = self.index
-        local last = math.min(#self.lines, first + count - 1)
+        local last = math.min(#sequence, first + count - 1)
         local rgb = PALETTE[self.color_name] or PALETTE.yellow
         -- KOReader composites this AFTER the PDF glyphs are rendered.
         -- Strong blending washes out black text; use a very faint tint
@@ -406,13 +411,13 @@ function FocusReader:paintTo(bb, x, y)
             or Blitbuffer.ColorRGB32(rgb[1], rgb[2], rgb[3], 165)
         local stroke = underline_only and 3 or 2
         for i = first, last do
-            local line = self.lines[i]
-            if line and line.area == self.lines[first].area then
+            local line = sequence[i]
+            if line and sequence[first] and line.area == sequence[first].area then
                 local left = x + math.floor(line.x)
                 local top = y + math.floor(line.y)
                 local width = math.ceil(line.w)
                 local height = math.ceil(line.h)
-                if self.pdf_highlight_style ~= "underline" then
+                if self.ui.paging and self.pdf_highlight_style ~= "underline" then
                     bb:blendRectRGB32(left, top, width, height, tint)
                 end
                 -- One-pixel separation keeps descenders readable.
@@ -519,7 +524,7 @@ function FocusReader:turnPage(direction)
         -- A platform that did not synchronously emit PageUpdate still needs
         -- the new page's text boxes. Avoid a duplicate repaint otherwise.
         self:refreshLines(true)
-        if self.style == "color" then self:applyNativeSelection() end
+        if self.style == "color" and not self:usesOverlayHighlight() then self:applyNativeSelection() end
         self:redraw(false)
     elseif after == before and self.style == "color" then
         -- End-of-book or failed turn: restore our visible temporary selection.
@@ -542,7 +547,7 @@ function FocusReader:moveFocus(direction)
         local old_slot = self:getSlot()
         local old_native_bounds = self._native_bounds
         self.index = index
-        if self.style == "color" then self:applyNativeSelection() end
+        if self.style == "color" and not self:usesOverlayHighlight() then self:applyNativeSelection() end
         self:redraw(false, old_slot, old_native_bounds)
     end
     return true
@@ -556,7 +561,7 @@ function FocusReader:start()
         return
     end
     if self.enabled then return end
-    if self.style == "color" and not self.ui.paging and not self:canUseNativeColor() then
+    if self.style == "color" and not self.ui.paging and not self:usesOverlayHighlight() and not self:canUseNativeColor() then
         UIManager:show(require("ui/widget/infomessage"):new{
             text = _("This KOReader build does not expose the native selection API. Choose Spotlight Focus instead."),
         })
@@ -572,7 +577,7 @@ function FocusReader:start()
         })
         return
     end
-    if self.style == "color" and not self.ui.paging then
+    if self.style == "color" and not self:usesOverlayHighlight() then
         self:setNativeSelectionColor()
         self:applyNativeSelection()
     end
@@ -599,7 +604,7 @@ function FocusReader:setLines(count)
     self.settings:saveSetting("line_count", self.line_count)
     if self.enabled and self.style == "color" then
         self.index = math.min(self.index, Logic.maxStart(self.lines, self.line_count))
-        self:applyNativeSelection()
+        if not self:usesOverlayHighlight() then self:applyNativeSelection() end
         self:redraw(true)
     end
 end
@@ -633,9 +638,17 @@ end
 function FocusReader:setPDFHighlightStyle(style)
     style = style == "underline" and "underline" or "tint"
     if self.pdf_highlight_style == style then return end
+    if self.enabled and self.style == "color" and not self.ui.paging then
+        self:clearNativeSelection()
+        self:restoreNativeSelectionColor()
+    end
     self.pdf_highlight_style = style
     self.settings:saveSetting("pdf_highlight_style", style)
-    if self.enabled and self.style == "color" and self.ui.paging then
+    if self.enabled and self.style == "color" then
+        if not self:usesOverlayHighlight() then
+            self:setNativeSelectionColor()
+            self:applyNativeSelection()
+        end
         self:redraw(true)
     end
 end
@@ -645,8 +658,10 @@ function FocusReader:setColor(name)
     self.color_name = name
     self.settings:saveSetting("color_name", name)
     if self.enabled and self.style == "color" then
-        self:setNativeSelectionColor()
-        self:applyNativeSelection()
+        if not self:usesOverlayHighlight() then
+            self:setNativeSelectionColor()
+            self:applyNativeSelection()
+        end
         self:redraw(true)
     end
 end
@@ -656,7 +671,7 @@ function FocusReader:setStyle(style)
     if self.style == style then return end
     -- On some KOReader/device builds native selection is unavailable. Never
     -- replace a working Spotlight session with a blank color highlight.
-    if self.enabled and style == "color" and not self.ui.paging and not self:canUseNativeColor() then
+    if self.enabled and style == "color" and not self.ui.paging and self.pdf_highlight_style ~= "underline" and not self:canUseNativeColor() then
         UIManager:show(require("ui/widget/infomessage"):new{
             text = _("Native color highlighting is unavailable in this KOReader build. Spotlight Focus still works."),
         })
@@ -673,7 +688,7 @@ function FocusReader:setStyle(style)
         self.index = math.min(self.index,
             Logic.maxStart(self.lines, self:getFocusLineCount()))
     end
-    if self.enabled and style == "color" and not self.ui.paging then
+    if self.enabled and style == "color" and not self:usesOverlayHighlight() then
         self:setNativeSelectionColor()
         self:applyNativeSelection()
     end
@@ -700,7 +715,7 @@ function FocusReader:onPageUpdate()
     local new_location = self:getLocation()
     local changed = new_location ~= self.location
     self:refreshLines(changed)
-    if self.style == "color" then self:applyNativeSelection() end
+    if self.style == "color" and not self:usesOverlayHighlight() then self:applyNativeSelection() end
     if changed then self:redraw(false) end
 end
 FocusReader.onPosUpdate = FocusReader.onPageUpdate
@@ -708,14 +723,14 @@ FocusReader.onPosUpdate = FocusReader.onPageUpdate
 function FocusReader:onScreenResize()
     if not self.enabled then return end
     self:refreshLines(false)
-    if self.style == "color" then self:applyNativeSelection() end
+    if self.style == "color" and not self:usesOverlayHighlight() then self:applyNativeSelection() end
     self:redraw(true)
 end
 
 function FocusReader:onReaderFooterVisibilityChange()
     if not self.enabled then return end
     self:refreshLines(false)
-    if self.style == "color" then self:applyNativeSelection() end
+    if self.style == "color" and not self:usesOverlayHighlight() then self:applyNativeSelection() end
     self:redraw(true)
 end
 
@@ -848,15 +863,15 @@ function FocusReader:addToMainMenu(menu_items)
                 sub_item_table = {
                     { text = _("Color"), sub_item_table = color_items },
                     { text = _("Focused lines"), sub_item_table = color_line_items },
-                    { text = _("PDF highlight style"), sub_item_table = {
-                        { text = _("Light tint + underline"),
+                    { text = _("Highlight style (EPUB / PDF)"), sub_item_table = {
+                        { text = _("Native EPUB highlight / PDF light tint"),
                           checked_func = function() return self.pdf_highlight_style == "tint" end,
                           check_callback_closes_menu = true,
                           callback = function(menu)
                               self:closeSettingsMenu(menu)
                               self:setPDFHighlightStyle("tint")
                           end },
-                        { text = _("Underline only"),
+                        { text = _("Underline only (EPUB / PDF)"),
                           checked_func = function() return self.pdf_highlight_style == "underline" end,
                           check_callback_closes_menu = true,
                           callback = function(menu)
