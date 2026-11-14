@@ -242,6 +242,21 @@ function FocusReader:getFocusLineCount()
     return self.style == "mask" and self.legacy_line_count or self.line_count
 end
 
+-- Ignore whitespace and punctuation-only CRengine tokens. Keep UTF-8
+-- letters (non-ASCII bytes) and digits, and preserve punctuation attached
+-- to actual words. Lua 5.1's %w alone does not reliably match Unicode.
+local function hasReadableWordContent(value)
+    if type(value) ~= "string" then return false end
+    for i = 1, #value do
+        local byte = value:byte(i)
+        if (byte >= 48 and byte <= 57) or (byte >= 65 and byte <= 90)
+                or (byte >= 97 and byte <= 122) or byte >= 128 then
+            return true
+        end
+    end
+    return false
+end
+
 -- Discover real words from CRengine, never estimate word widths from text.
 -- Each candidate is checked against the engine-provided word box.
 function FocusReader:refreshWords()
@@ -256,7 +271,7 @@ function FocusReader:refreshWords()
             local ok, word = pcall(doc.getWordFromPosition, doc, {x=x,y=y})
             local b = ok and word and word.sbox
             if b and word.pos0 and word.pos1 and type(word.word) == "string"
-                    and word.word ~= "" and b.w and b.h and b.w > 0 and b.h > 0
+                    and hasReadableWordContent(word.word) and b.w and b.h and b.w > 0 and b.h > 0
                     and x >= b.x and x < b.x + b.w and y >= b.y and y < b.y + b.h then
                 local key = tostring(word.pos0) .. ":" .. tostring(word.pos1)
                 if not seen[key] then
