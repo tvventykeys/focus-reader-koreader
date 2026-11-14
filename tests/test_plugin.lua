@@ -408,4 +408,52 @@ check(blended[1].color.a>0 and blended[1].color.a<255,'PDF highlight blends tran
 check(type(blended[1].color.r)=='number','PDF highlight uses configured RGB color')
 pdf:stop()
 check(pdfpaging.onGotoViewRel==pdfturn,'PDF page-turn hook restored')
+
+-- A PDF that has diagrams/scans or no extractable text must never trap the
+-- page-turn hook or crash when geometry disappears after a successful start.
+local original_pdf_text = pdfdoc.getTextFromPositions
+pdfdoc.getTextFromPositions = function() return {sboxes={}} end
+local original_show_pdf = mgr.show
+mgr.show = function() end
+pdf:start()
+mgr.show = original_show_pdf
+check(not pdf.enabled and pdfpaging.onGotoViewRel==pdfturn,
+    'PDF with no text refuses to start and leaves native turning intact')
+pdfdoc.getTextFromPositions = original_pdf_text
+
+-- Backend failures during a page update must not escape into KOReader.
+pdf:start()
+check(pdf.enabled,'PDF restarted for backend failure test')
+pdfdoc.getTextFromPositions = function() error('MuPDF text position unavailable') end
+local ok_update = pcall(function() pdf:onPageUpdate() end)
+check(ok_update and not pdf.enabled and pdfpaging.onGotoViewRel==pdfturn,
+    'PDF backend exception stops focus and restores native page turning')
+pdfdoc.getTextFromPositions = original_pdf_text
+
+-- Landscape can put the extreme corners outside the page; inset probe
+-- coordinates must still find usable text.
+local first_probe = true
+pdfview.screenToPageTransform = function(_,p)
+    if p.x < 15 or p.x > 585 then return nil end
+    first_probe = false
+    return {page=1,x=p.x,y=p.y}
+end
+pdf:start()
+check(pdf.enabled and #pdf.lines==2 and not first_probe,
+    'landscape inset probes retain readable PDF text')
+pdf:stop()
+
+-- Rotation/reflow to geometry-less output must stop safely and not leave
+-- the clicker intercepted. A later valid page can start a new focus session.
+pdfview.screenToPageTransform = function(_,p) return {page=1,x=p.x,y=p.y} end
+pdf:start()
+pdfdoc.getTextFromPositions = function() return {sboxes={}} end
+local rotated_ok = pcall(function() pdf:onScreenResize() end)
+check(rotated_ok and not pdf.enabled and pdfpaging.onGotoViewRel==pdfturn,
+    'PDF rotation losing text positions restores reading controls')
+pdfdoc.getTextFromPositions = original_pdf_text
+pdf:start()
+check(pdf.enabled and #pdf.lines==2,
+    'PDF focus can restart after returning to a supported layout')
+pdf:stop()
 print('PASS: '..checks..' mocked KOReader checks')
