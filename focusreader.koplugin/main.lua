@@ -158,7 +158,18 @@ function FocusReader:getPageAreas(viewport)
     return areas
 end
 
+-- PDF backends may return no geometry (diagrams/scans) or raise during a
+-- reflow/rotation transition. Never let that exception escape into KOReader.
 function FocusReader:refreshLines(reset_index)
+    local ok = pcall(self._refreshLinesUnsafe, self, reset_index)
+    if not ok then
+        self.lines, self.areas, self.words = {}, {}, nil
+        self.index = 1
+    end
+    return ok and #self.lines > 0
+end
+
+function FocusReader:_refreshLinesUnsafe(reset_index)
     self.lines = {}
     self.areas = {}
     if not self.supported or not self.ui.document then return end
@@ -175,11 +186,21 @@ function FocusReader:refreshLines(reset_index)
         if type(page) == "number"
                 and type(self.view.screenToPageTransform) == "function"
                 and type(self.view.pageToScreenTransform) == "function" then
-            local p0ok, p0 = pcall(self.view.screenToPageTransform, self.view,
-                {x=viewport.x+2, y=viewport.y+2})
-            local p1ok, p1 = pcall(self.view.screenToPageTransform, self.view,
-                {x=end_area.x+end_area.w-2, y=end_area.y+end_area.h-2})
-            if p0ok and p1ok and p0 and p1 and p0.page == p1.page then
+            -- Insets avoid coordinate rounding at margins, especially when
+            -- the Scribe switches to landscape or reflow alters the page.
+            local function probe(rx, ry)
+                local ok, pos = pcall(self.view.screenToPageTransform, self.view,
+                    {x=viewport.x+viewport.w*rx, y=viewport.y+viewport.h*ry})
+                if ok and type(pos) == "table" and type(pos.page) == "number"
+                    and type(pos.x) == "number" and type(pos.y) == "number" then
+                    return pos
+                end
+            end
+            local p0, p1 = probe(0.04, 0.04), probe(0.96, 0.96)
+            if not (p0 and p1 and p0.page == p1.page) then
+                p0, p1 = probe(0.15, 0.15), probe(0.85, 0.85)
+            end
+            if p0 and p1 and p0.page == p1.page and p0.page == page then
                 local ok, result = pcall(self.ui.document.getTextFromPositions,
                     self.ui.document, p0, p1)
                 if ok and result and type(result.sboxes) == "table" then
@@ -195,7 +216,13 @@ function FocusReader:refreshLines(reset_index)
                                 if x0 and y0 and x1 and y1 then
                                     local transformed, rect = pcall(self.view.pageToScreenTransform,
                                         self.view, page, {x=x0,y=y0,w=x1-x0,h=y1-y0})
-                                    if transformed and rect and rect.w and rect.h then
+                                    if transformed and type(rect) == "table"
+                                            and type(rect.x) == "number"
+                                            and type(rect.y) == "number"
+                                            and type(rect.w) == "number" and rect.w > 0
+                                            and type(rect.h) == "number" and rect.h > 0
+                                            and rect.x == rect.x and rect.y == rect.y
+                                            and rect.w == rect.w and rect.h == rect.h then
                                         boxes[#boxes+1] = rect
                                     end
                                 end
@@ -675,12 +702,15 @@ function FocusReader:turnPage(direction)
     if after ~= before and self.location ~= after then
         -- A platform that did not synchronously emit PageUpdate still needs
         -- the new page's text boxes. Avoid a duplicate repaint otherwise.
-        self:refreshLines(true)
-        if self.style == "color" and not self:usesOverlayHighlight() then self:applyNativeSelection() end
-        self:redraw(false)
+        if not self:refreshLines(true) and self.ui.paging then
+            self:stop()
+        else
+            if self.style == "color" and not self:usesOverlayHighlight() then self:applyNativeSelection() end
+            self:redraw(false)
+        end
     elseif after == before and self.style == "color" then
-        -- End-of-book or failed turn: restore our visible temporary selection.
-        self:applyNativeSelection()
+        -- A PDF must never invoke the EPUB-native selection backend.
+        if not self:usesOverlayHighlight() then self:applyNativeSelection() end
         self:redraw(false)
     end
     self._page_direction = nil
@@ -866,7 +896,10 @@ function FocusReader:onPageUpdate()
     if not self.enabled then return end
     local new_location = self:getLocation()
     local changed = new_location ~= self.location
-    self:refreshLines(changed)
+    if not self:refreshLines(changed) and self.ui.paging then
+        self:stop()
+        return
+    end
     if self.style == "color" and not self:usesOverlayHighlight() then self:applyNativeSelection() end
     if changed then self:redraw(false) end
 end
@@ -874,14 +907,20 @@ FocusReader.onPosUpdate = FocusReader.onPageUpdate
 
 function FocusReader:onScreenResize()
     if not self.enabled then return end
-    self:refreshLines(false)
+    if not self:refreshLines(false) and self.ui.paging then
+        self:stop()
+        return
+    end
     if self.style == "color" and not self:usesOverlayHighlight() then self:applyNativeSelection() end
     self:redraw(true)
 end
 
 function FocusReader:onReaderFooterVisibilityChange()
     if not self.enabled then return end
-    self:refreshLines(false)
+    if not self:refreshLines(false) and self.ui.paging then
+        self:stop()
+        return
+    end
     if self.style == "color" and not self:usesOverlayHighlight() then self:applyNativeSelection() end
     self:redraw(true)
 end
