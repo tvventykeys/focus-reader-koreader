@@ -71,7 +71,7 @@ check(menu_items.focusreader.sorting_hint=='tools','Tools menu location')
 local items=menu_items.focusreader.sub_item_table
 check(#items==4,'four simple menu sections')
 check(items[2].text=='Reading mode' and #items[2].sub_item_table==3,'reading mode includes both spotlight layouts')
-check(items[3].text=='Highlight Focus' and #items[3].sub_item_table==2,'highlight has two settings')
+check(items[3].text=='Highlight Focus' and #items[3].sub_item_table==3,'highlight includes word mode')
 check(items[4].text=='Spotlight Focus' and #items[4].sub_item_table==2,'spotlight lines and mask color')
 check(items[3].sub_item_table[1].text=='Color' and items[3].sub_item_table[2].text=='Focused lines','highlight color + lines labels')
 local labels={}
@@ -86,6 +86,7 @@ local label_text=table.concat(labels,';'):lower()
 check(not label_text:find('opacity') and not label_text:find('refresh') and not label_text:find('test') and not label_text:find('clicker'), 'hidden technical settings')
 check(#items[3].sub_item_table[1].sub_item_table==6,'six colors available')
 check(#items[3].sub_item_table[2].sub_item_table==5,'highlight lines 1-5 available')
+check(items[3].sub_item_table[3].text=='Word-by-word (no speech)','word focus toggle exists')
 check(#items[4].sub_item_table[1].sub_item_table==5,'spotlight lines 1-5 available')
 instance:start()
 check(instance.enabled and roll.onGotoViewRel~=original,'start installs clicker hook')
@@ -128,6 +129,18 @@ check(instance.style=='color','switch back to highlight focus')
 check(instance.opacity==56,'opacity unchanged after style changes')
 instance:stop()
 check(not instance.enabled and roll.onGotoViewRel==original,'stop restores clicker hook')
+-- Word focus must not start without native word geometry.
+items[3].sub_item_table[3].callback()
+check(instance.word_mode and stored.word_mode,'word mode persists')
+local mgr = require('ui/uimanager')
+local original_show_word = mgr.show
+local word_messages = 0
+mgr.show = function() word_messages = word_messages + 1 end
+instance:start()
+check(not instance.enabled and word_messages == 1,'missing word geometry fails safely')
+mgr.show = original_show_word
+items[3].sub_item_table[3].callback()
+check(not instance.word_mode,'word mode can be disabled')
 check(saved.opacity==nil and saved.intensity==nil and saved.color_refresh_mode==nil and saved.refresh_mode==nil, 'retired settings never rewritten')
 check(dirty[#dirty].mode=='ui','nonflashing ui refresh mode preserved')
 
