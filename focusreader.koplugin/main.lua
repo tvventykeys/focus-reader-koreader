@@ -151,11 +151,12 @@ function FocusReader:refreshLines(reset_index)
         self.words = nil
     end
     local active_count = self:getFocusLineCount()
+    local sequence = self.word_mode and self.style == "color" and self.words or self.lines
     if reset_index then
         self.index = self._page_direction == -1
-            and Logic.maxStart(self.lines, active_count) or 1
+            and Logic.maxStart(sequence, active_count) or 1
     else
-        self.index = math.min(self.index, Logic.maxStart(self.lines, active_count))
+        self.index = math.min(self.index, Logic.maxStart(sequence, active_count))
     end
 end
 
@@ -196,7 +197,8 @@ function FocusReader:refreshWords()
 end
 
 function FocusReader:getSlot()
-    return Logic.slot(self.lines, self.index, self:getFocusLineCount())
+    local sequence = self.word_mode and self.style == "color" and self.words or self.lines
+    return Logic.slot(sequence or {}, self.index, self:getFocusLineCount())
 end
 
 -- Solid RGB is what the EPUB engine accepts for a native selection.
