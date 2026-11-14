@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.0 — 2026-11-14
+
+- Introduced optional custom image backgrounds for Spotlight Reading Window and Reading Guide, chosen from the KOReader screensavers folder.
+- Added separate black/white backgrounds for transparent PNG artwork; uses alpha compositing to preserve the image's original colors. Visually confirmed on Kobo Libra Colour.
+- Preserved existing solid black and white masks and independent line counts.
+- Includes 1.1-series word focus, line/block stepping, EPUB/PDF underline options, and safer handling of missing PDF text positions.
+- PDF behavior on Kindle Scribe remains community-testing territory; no scanned-PDF OCR.
+
 ## v1.1.0 — 2026-11-14
 
 - Added word-by-word navigation without text-to-speech, including regression fixes for spaces, punctuation, curly quotes, and contractions.
@@ -16,8 +24,6 @@
 - Start/Stop closes the menu before updating the page as well.
 - All highlighting, blackout, smooth refresh, settings persistence and clicker navigation behavior otherwise unchanged.
 - Tested against KOReader TouchMenu callback semantics with mocked menu-close tests; physical Kobo verification pending.
-
-# Changelog
 
 ## v1.0.0 — 2026-11-09
 
