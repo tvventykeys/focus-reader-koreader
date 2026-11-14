@@ -320,9 +320,37 @@ function FocusReader:refreshWords()
         end
     end
     table.sort(self.words, function(a,b)
-        if math.abs(a.y-b.y) <= math.min(a.h,b.h)/2 then return a.x < b.x end
+        if math.abs(a.y-b.y) <= math.min(a.h,b.h)/2 then
+            if a.x ~= b.x then return a.x < b.x end
+            return a.w < b.w
+        end
         return a.y < b.y
     end)
+    -- CRengine can return different XPointers for the same visible word,
+    -- including variants with a trailing space or comma. Deduplicate by
+    -- actual screen position and word content, not XPointers alone.
+    local unique = {}
+    local function wordCore(value)
+        return (value or ""):gsub("[%s%p]", "")
+    end
+    for _, candidate in ipairs(self.words) do
+        local duplicate = false
+        for j = #unique, math.max(1, #unique - 4), -1 do
+            local previous = unique[j]
+            if math.abs(previous.y - candidate.y) <= 2
+                    and math.abs(previous.x - candidate.x) <= 2
+                    and wordCore(previous.word_text) == wordCore(candidate.word_text)
+                    and math.abs(previous.w - candidate.w) <= math.max(12, math.floor(previous.w * 0.2)) then
+                duplicate = true
+                -- Prefer the narrower box, which excludes trailing punctuation
+                -- or whitespace when CRengine exposes both alternatives.
+                if candidate.w < previous.w then unique[j] = candidate end
+                break
+            end
+        end
+        if not duplicate then unique[#unique + 1] = candidate end
+    end
+    self.words = unique
 end
 
 -- Read-only, on-screen diagnostic for real-device word navigation.
