@@ -15,7 +15,7 @@ Focus Reader does **not** require a network connection, create annotations, read
 ## Installation
 
 1. Install KOReader first. This plugin does not work in the stock Kobo reader app.
-2. Download the **Focus-Reader-v1.1.0-koplugin.zip** release asset (not GitHub's automatically generated source ZIP).
+2. For the preview, download the **Focus-Reader-v1.1.1-beta.1-koplugin.zip** release asset (not GitHub's automatically generated source ZIP).
 3. Extract it. Copy the **`focusreader.koplugin`** folder itself into KOReader's `plugins/` directory. Do not nest the directory inside another ZIP folder.
    - **Kobo:** `.adds/koreader/plugins/` on the connected e-reader.
    - **Other devices:** find the `plugins` directory inside your KOReader data directory; its location varies.
@@ -35,7 +35,7 @@ Expected path (Kobo): `.adds/koreader/plugins/focusreader.koplugin/main.lua`
 - Highlight Focus: Color, Focused lines (1–5), Tint + underline or Underline only (EPUB/PDF), Word-by-word navigation (no speech)
 - Spotlight Focus: Focused lines (1–5), Reading Guide: advance by (One line default / Whole group), Mask color (Black default / White optional)
 
-**Development preview (not part of v1.1.0):** Reading Guide's optional **Whole group** setting advances by the full configured 1–5 lines. With 3 lines, it moves 1–3 → 4–6 → 7–9; with 5 lines, 1–5 → 6–10. A final short group shows only unread lines, then the next press turns the page. One-line movement remains the default. This setting affects Reading Guide only, not Reading Window or Highlight Focus.
+**v1.1.1 beta preview (not part of stable v1.1.0):** Reading Guide's optional **Whole group** setting advances by the full configured 1–5 lines. With 3 lines, it moves 1–3 → 4–6 → 7–9; with 5 lines, 1–5 → 6–10. A final short group shows only unread lines, then the next press turns the page. One-line movement remains the default. This setting affects Reading Guide only, not Reading Window or Highlight Focus.
 
 Use the same buttons or clicker inputs that already turn pages in KOReader. A click normally moves by one visual line; if you previously selected block movement in an older release, the stored preference is retained. Stop Focus Reader to restore normal page turning.
 
