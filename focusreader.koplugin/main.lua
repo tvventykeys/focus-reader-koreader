@@ -62,6 +62,36 @@ function FocusReader:init()
     -- Deliberately do not auto-start a previous session.
 end
 
+function FocusReader:supportDiagnostics()
+    local ui = self.ui
+    local doc = ui and ui.document
+    local checks = {
+        {"reader controller", ui ~= nil},
+        {"paging or rolling", ui and (ui.paging ~= nil or ui.rolling ~= nil)},
+        {"document", doc ~= nil},
+        {"getTextFromPositions", doc and type(doc.getTextFromPositions) == "function"},
+        {"getCurrentPage", doc and type(doc.getCurrentPage) == "function"},
+        {"getCurrentPos (EPUB only)", ui and (ui.paging or (doc and type(doc.getCurrentPos) == "function"))},
+        {"getVisiblePageCount (EPUB only)", ui and (ui.paging or (doc and type(doc.getVisiblePageCount) == "function"))},
+        {"getPageCount", doc and type(doc.getPageCount) == "function"},
+        {"view", self.view ~= nil},
+        {"screenToPageTransform (PDF)", not (ui and ui.paging) or
+            (self.view and type(self.view.screenToPageTransform) == "function")},
+        {"pageToScreenTransform (PDF)", not (ui and ui.paging) or
+            (self.view and type(self.view.pageToScreenTransform) == "function")},
+    }
+    local lines = {"Focus Reader diagnostic (no changes made):"}
+    for _, check in ipairs(checks) do
+        lines[#lines + 1] = (check[2] and "OK: " or "MISSING: ") .. check[1]
+    end
+    if ui and ui.paging then
+        lines[#lines+1] = "PDF page: " .. tostring(ui.paging.current_page)
+        lines[#lines+1] = "Reflow: " ..
+            tostring(doc and doc.configurable and doc.configurable.text_wrap)
+    end
+    return table.concat(lines, "\\n")
+end
+
 function FocusReader:isSupported()
     local doc = self.ui and self.ui.document
     return self.ui and (self.ui.rolling or self.ui.paging) and doc
@@ -475,7 +505,7 @@ end
 function FocusReader:start()
     if not self.supported then
         UIManager:show(require("ui/widget/infomessage"):new{
-            text = _("This document does not expose supported text geometry."),
+            text = self:supportDiagnostics(),
         })
         return
     end
