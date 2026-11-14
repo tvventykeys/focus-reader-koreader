@@ -33,3 +33,30 @@ python3 scripts/build_release.py
 ```
 
 This produces the installable ZIP in `dist/`. The tests mock KOReader API calls and validate behavior; they do not emulate an actual e-ink controller.
+
+## Development: Reddit requests (not stable)
+
+### White Spotlight and PaperDots
+
+- [ ] Confirm legacy settings (no `spotlight_mask_color`) still paint black.
+- [ ] Change Spotlight → Mask color → White; verify both Reading Window and Reading Guide.
+- [ ] Restart KOReader; confirm white preference persists, but Focus Reader does not auto-start.
+- [ ] Enable PaperDots with each style (Random, Newsprint, Fibers, Linen), testing both "Only inside books" and "Hide dots on menus".
+- [ ] Inspect white masked regions for dots and ensure the focused text remains unobstructed.
+- [ ] Change focus with clicker, page forward/back, open/close menu, and stop. Watch for stale dots, missing refreshes, or texture painted over menus.
+- [ ] Disable PaperDots and confirm Focus Reader's normal black and white rendering is unchanged.
+
+PaperDots paints only near-white pixels just before screen refresh; its current source uses a threshold of 0xF0. This is a compatibility hypothesis, not a verified integration. Do not change PaperDots' source or intercept its hooks without a demonstrated failure.
+
+### Word-by-word focus
+
+- [ ] Verify reliable word boundaries and exact rendered coordinates from the active KOReader engine; test punctuation, wrapped lines, hyphenation, mixed direction, and page boundaries.
+- [ ] Confirm manual clicker forward/backward works before considering any automatic pacing.
+- [ ] Ensure existing line and block modes remain unchanged.
+
+### PDF
+
+- [ ] Identify fixed-layout PDF backend and whether it provides text geometry compatible with the plugin.
+- [ ] Test reflowed text PDF separately from fixed-layout PDF.
+- [ ] Show a clear unsupported message for scanned/image-only PDFs; no OCR is included.
+- [ ] Verify that opening unsupported documents never intercepts page-turn controls.
