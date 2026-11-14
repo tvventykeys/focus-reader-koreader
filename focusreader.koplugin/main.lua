@@ -89,7 +89,7 @@ function FocusReader:supportDiagnostics()
         lines[#lines+1] = "Reflow: " ..
             tostring(doc and doc.configurable and doc.configurable.text_wrap)
     end
-    return table.concat(lines, "\\n")
+    return table.concat(lines, "\n")
 end
 
 function FocusReader:isSupported()
