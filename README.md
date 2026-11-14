@@ -33,7 +33,9 @@ Expected path (Kobo): `.adds/koreader/plugins/focusreader.koplugin/main.lua`
 - Start / Stop Focus Reader
 - Reading mode: Highlight Focus / Spotlight Focus: Reading Window / Spotlight Focus: Reading Guide
 - Highlight Focus: Color, Focused lines (1–5), Tint + underline or Underline only (EPUB/PDF), Word-by-word navigation (no speech)
-- Spotlight Focus: Focused lines (1–5), Mask color (Black default / White optional)
+- Spotlight Focus: Focused lines (1–5), Reading Guide: advance by (One line default / Whole group), Mask color (Black default / White optional)
+
+**Development preview (not part of v1.1.0):** Reading Guide's optional **Whole group** setting advances by the full configured 1–5 lines. With 3 lines, it moves 1–3 → 4–6 → 7–9; with 5 lines, 1–5 → 6–10. A final short group shows only unread lines, then the next press turns the page. One-line movement remains the default. This setting affects Reading Guide only, not Reading Window or Highlight Focus.
 
 Use the same buttons or clicker inputs that already turn pages in KOReader. A click normally moves by one visual line; if you previously selected block movement in an older release, the stored preference is retained. Stop Focus Reader to restore normal page turning.
 
