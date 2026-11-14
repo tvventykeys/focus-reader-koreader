@@ -233,6 +233,23 @@ check(reader_closed == 2 and touch_closed == 0,
     'color selection closes full reader menu and bottom config')
 ui.menu.onTapCloseMenu = nil
 
+-- EPUB underline-only uses the same temporary overlay without CRengine
+-- selection; switching back restores native selection.
+instance:setStyle('color')
+instance:setPDFHighlightStyle('underline')
+instance:start()
+check(instance.enabled and instance:usesOverlayHighlight(),'EPUB underline overlay starts')
+local epub_strokes={}
+local epubbb={blendRectRGB32=function(_,x,y,w,h,c)
+    epub_strokes[#epub_strokes+1]={x=x,y=y,w=w,h=h,c=c}
+end}
+instance:paintTo(epubbb,0,0)
+check(#epub_strokes>0,'EPUB underline paints below text')
+check(epub_strokes[1].h==3,'EPUB underline uses strong three-pixel stroke')
+instance:setPDFHighlightStyle('tint')
+check(not instance:usesOverlayHighlight(),'EPUB returns to native highlighting')
+instance:stop()
+
 -- PDF Highlight Focus draws temporary blended rectangles; it never calls
 -- CRengine selection and never creates persistent PDF annotations.
 local pdfdoc={configurable={text_wrap=0}}
