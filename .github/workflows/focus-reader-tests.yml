@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - feature/spotlight-white-mask
+      - main
+    tags:
+      - 'v*'
   workflow_dispatch:
 jobs:
   mocked-koreader:
