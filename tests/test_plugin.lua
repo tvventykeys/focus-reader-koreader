@@ -594,6 +594,15 @@ local next_para=instance:getSlot()
 check(next_para.y>first_para.y,'second paragraph has separate highlight window')
 roll:onGotoViewRel(-1)
 check(instance.index==1,'clicker previous returns to prior paragraph')
+roll:onGotoViewRel(1)
+roll:onGotoViewRel(1)
+check(page==2 and instance.index==1,
+    'paragraph next at final page anchor advances to next page')
+roll:onGotoViewRel(-1)
+check(page==1 and instance.index==7,
+    'paragraph previous from next page returns to last visible paragraph')
+roll:onGotoViewRel(-1)
+check(instance.index==1,'reverse clicker returns to first EPUB paragraph')
 instance:setStyle('mask')
 check(instance:getSlot().h==first_para.h,
     'Spotlight also focuses an entire paragraph')
