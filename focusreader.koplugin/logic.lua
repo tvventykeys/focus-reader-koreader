@@ -83,10 +83,11 @@ end
 -- PDF lacks HTML paragraph semantics. Prefer conservative clues (a blank
 -- line, an indented new line, or a short preceding last line). These are
 -- estimates, unlike the structural EPUB XPointer keys.
-local function geometricBreak(prev, current, typical_width, typical_x)
+local function geometricBreak(prev, current, typical_width, typical_x, typical_gap)
     if prev.area ~= current.area then return true end
     local gap = current.y - (prev.y + prev.h)
-    if gap > math.max(prev.h, current.h) * 0.75 then return true end
+    if gap > math.max(math.max(prev.h, current.h) * 0.85,
+            (typical_gap or gap) * 1.65) then return true end
     if current.x > typical_x + math.max(10, current.h * 0.8) then return true end
     if typical_width > 0 and prev.w < typical_width * 0.68
             and current.x <= typical_x + math.max(6, current.h * 0.35) then
@@ -102,20 +103,35 @@ end
 function Logic.paragraphStarts(lines, keys)
     local starts = {}
     if #lines == 0 then return starts end
-    local width, left = {}, {}
+    local width, left, gaps = {}, {}, {}
     for _, line in ipairs(lines) do
         local a = line.area
         width[a] = math.max(width[a] or 0, line.w)
         left[a] = math.min(left[a] or line.x, line.x)
+    end
+    for i=2,#lines do
+        local prev, line = lines[i-1], lines[i]
+        if prev.area == line.area then
+            local gap = line.y - (prev.y+prev.h)
+            if gap >= 0 then
+                gaps[line.area] = math.min(gaps[line.area] or gap, gap)
+            end
+        end
     end
     starts[1] = 1
     for i = 2, #lines do
         local prev, current = lines[i-1], lines[i]
         local previous_key, key = keys and keys[i-1], keys and keys[i]
         local estimated = geometricBreak(prev, current,
-            width[current.area] or 0, left[current.area] or current.x)
+            width[current.area] or 0, left[current.area] or current.x,
+            gaps[current.area])
+        -- A stable semantic EPUB paragraph key overrides line-wrap geometry.
+        -- A 'div' key is often only a chapter wrapper, so allow geometric
+        -- splitting inside it when no finer DOM paragraph element exists.
+        local stable_semantic = key and previous_key and key == previous_key
+            and not key:match("/div%[?%d*%]?$")
         if prev.area ~= current.area or (key and previous_key and key ~= previous_key)
-                or estimated then
+                or (estimated and not stable_semantic) then
             starts[#starts+1] = i
         end
     end
