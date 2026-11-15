@@ -1515,6 +1515,12 @@ function FocusReader:addToMainMenu(menu_items)
                     } },
                 },
             },
+            {
+                text = _("Freeform Focus"),
+                sub_item_table = {
+                    { text = _("Window height"), sub_item_table = freeform_height_items },
+                },
+            },
         },
     }
 end
