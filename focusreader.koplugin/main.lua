@@ -1276,7 +1276,7 @@ end
 function FocusReader:addToMainMenu(menu_items)
     -- Keep the top-level menu focused on reading, not refresh internals.
     local color_line_items, spotlight_line_items, freeform_height_items = {}, {}, {}
-    for _, percent in ipairs({10, 15, 20, 25, 30, 40, 50, 75}) do
+    for choice_index, percent in ipairs({10, 15, 20, 25, 30, 40, 50, 75}) do
         local size = percent
         freeform_height_items[#freeform_height_items + 1] = {
             text = tostring(size) .. _("% of page height"),
