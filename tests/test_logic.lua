@@ -72,4 +72,40 @@ long_lines[9].area=right_area
 local columns=L.paragraphStarts(long_lines,keys)
 ok(columns[2]==8 and L.slotRange(long_lines,1,9).area==area,
     'separate reading areas never merge into one focus window')
+
+-- Freeform Focus uses only page viewport geometry, never text positions.
+local viewport={x=0,y=0,w=600,h=900}
+ok(L.freeformWindowHeight(viewport,30)==270,
+    '30-percent Freeform window height')
+ok(L.freeformLastIndex(viewport,30)==4,
+    'ceil last index includes a short final page section')
+local all_slots={}
+for i=1,4 do all_slots[i]=L.freeformSlot(viewport,30,i) end
+ok(all_slots[1].y==0 and all_slots[1].h==270,
+    'Freeform begins at top of page')
+ok(all_slots[4].y==630 and all_slots[4].y+all_slots[4].h==900,
+    'Freeform last window aligns exactly to page bottom')
+for i=2,#all_slots do
+    ok(all_slots[i].y <= all_slots[i-1].y+all_slots[i-1].h,
+        'Freeform windows never skip any page pixels')
+end
+ok(select(1,L.freeformAdvance(viewport,30,1,1))==2,
+    'Freeform next click moves one window')
+ok(select(1,L.freeformAdvance(viewport,30,3,-1))==2,
+    'Freeform previous click reverses one window')
+ok(select(2,L.freeformAdvance(viewport,30,4,1))==1,
+    'Freeform last window requests real next page')
+ok(select(2,L.freeformAdvance(viewport,30,1,-1))==-1,
+    'Freeform first window requests real previous page')
+local inset={x=12,y=24,w=400,h=777}
+local end_slot=L.freeformSlot(inset,25,999)
+ok(end_slot.x==12 and end_slot.y+end_slot.h==801,
+    'Freeform respects nonzero origin and bottom viewport bounds')
+ok(L.freeformWindowHeight({x=0,y=0,w=0,h=900},25)==nil,
+    'invalid viewport cannot show a reading window')
+ok(L.freeformLastIndex(viewport,0)==0,
+    'out-of-range settings cannot create an invalid window')
+local wide=L.freeformSlot(viewport,75,2)
+ok(wide.y==225 and wide.h==675,
+    '75-percent Freeform window overlaps the bottom without gaps')
 print('PASS: '..n..' logic checks')

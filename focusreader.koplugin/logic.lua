@@ -349,4 +349,48 @@ function Logic.preciseWindowBounds(previous_tight, next_tight, previous_slot, ne
     return {x=union.x, y=y0, w=union.w, h=y1-y0}
 end
 
+
+-- Freeform Focus has no dependency on CRe/MuPDF text geometry. Only the
+-- rendered reader viewport is needed. Percentages describe the clear reading
+-- window height, with one window of forward progress for each click.
+function Logic.freeformWindowHeight(area, percent)
+    if type(area) ~= "table" or type(area.h) ~= "number"
+            or type(area.w) ~= "number" or area.h <= 0 or area.w <= 0
+            or type(percent) ~= "number" or percent < 10 or percent > 75 then
+        return nil
+    end
+    return math.max(1, math.min(area.h, math.floor(area.h * percent / 100 + 0.5)))
+end
+
+function Logic.freeformLastIndex(area, percent)
+    local height = Logic.freeformWindowHeight(area, percent)
+    if not height then return 0 end
+    return math.max(1, math.ceil(area.h / height))
+end
+
+function Logic.freeformSlot(area, percent, index)
+    local height = Logic.freeformWindowHeight(area, percent)
+    if not height then return nil end
+    local last = Logic.freeformLastIndex(area, percent)
+    local step = clamp(index, 1, last) - 1
+    -- For the final, overlapping window, align to the bottom edge. Never
+    -- leave the last portion of the page unread or draw outside the viewport.
+    local top = math.min(area.h - height, step * height)
+    return {x=area.x, y=area.y + top, w=area.w, h=height, area=area}
+end
+
+function Logic.freeformAdvance(area, percent, index, direction)
+    local last = Logic.freeformLastIndex(area, percent)
+    if last == 0 then return nil, direction end
+    index = clamp(index, 1, last)
+    if direction > 0 then
+        if index == last then return nil, 1 end
+        return index + 1, nil
+    elseif direction < 0 then
+        if index == 1 then return nil, -1 end
+        return index - 1, nil
+    end
+    return index, nil
+end
+
 return Logic
