@@ -1368,7 +1368,7 @@ function FocusReader:addToMainMenu(menu_items)
                 keep_menu_open = true,
                 callback = function(menu)
                     self:closeSettingsMenu(menu)
-                    if self.enabled then self:stop() else self:start()
+                    if self.enabled then self:stop() else self:start() end
                 end,
             },
             {
