@@ -10,6 +10,23 @@ Focus Reader moves a visual focus region down or up as you press KOReader's usua
 - **Spotlight Focus — Reading Window**: text above and below the focused 1–5 lines is masked **solid black by default**, with an optional white mask or custom image background.
 - **Spotlight Focus — Reading Guide**: text above the reading position stays visible; everything below is masked **solid black by default**, with an optional white mask or custom image background, like moving a sheet of paper down the page. The Spotlight line count is independent of Highlight Focus.
 
+### Paragraph Focus (development preview)
+
+Choose **Tools → Focus Reader → Advance by → Whole paragraph** to focus one visible
+paragraph at a time. Next/previous controls move between paragraphs instead of
+advancing 1–5 lines. This works in Highlight Focus, Spotlight Reading Window,
+and Spotlight Reading Guide. The active region grows to include the whole
+paragraph **visible on the current page**, even if it is longer than five lines.
+If a paragraph continues onto the next page, normal page turning reveals its
+next visible portion; it cannot be displayed across two pages simultaneously.
+
+For EPUB, Focus Reader uses CRengine text-position (XPointer) paragraph elements
+when available. For PDFs, which usually do not expose semantic paragraph tags,
+it estimates boundaries from spacing, indentation and short preceding lines.
+Therefore PDF paragraphs may occasionally be joined or separated incorrectly.
+Scanned/image-only pages still need extractable text. Paragraph mode and
+word-by-word mode are mutually exclusive; choosing one disables the other.
+
 Focus Reader does **not** require a network connection, create annotations, read audio, or send any book text anywhere. It is independent of any narration or book-sync service.
 
 ## Installation
@@ -33,9 +50,16 @@ Expected path (Kobo): `.adds/koreader/plugins/focusreader.koplugin/main.lua`
 - Start / Stop Focus Reader
 - Reading mode: Highlight Focus / Spotlight Focus: Reading Window / Spotlight Focus: Reading Guide
 - Highlight Focus: Color, Focused lines (1–5), Tint + underline or Underline only (EPUB/PDF), Word-by-word navigation (no speech)
+- Advance by: One line / Whole focused group / **Whole paragraph** (paragraph mode overrides the fixed line count)
 - Spotlight Focus: Focused lines (1–5), Mask color (Black / White / Custom image), Choose custom image from KOReader's screensavers directory, Image background color (Black / White). Transparent PNG areas show the selected background color without altering the artwork.
 
-Use the same buttons or clicker inputs that already turn pages in KOReader. A click normally moves by one visual line; if you previously selected block movement in an older release, the stored preference is retained. Stop Focus Reader to restore normal page turning.
+Use the same buttons or clicker inputs that already turn pages in KOReader. A click normally moves by one visual line; the chosen advancement mode is stored across sessions. Stop Focus Reader to restore normal page turning.
+
+## What's new (unreleased paragraph preview)
+
+- Paragraph-aware EPUB highlighting and clicker navigation, with variable-length focus windows.
+- Layout-based paragraph fallback for text-based PDFs.
+- Existing line and group navigation remain selectable.
 
 ## What's new in v1.2.0
 

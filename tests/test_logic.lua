@@ -21,4 +21,55 @@ local nrm=L.normaliseLines({{x=30,y=100,w=40,h=18},{x=78,y=101,w=30,h=18},{x=30,
 ok(#nrm==2 and nrm[1].w==78, 'fragment line merging')
 local box=L.selectionBounds({{x=30,y=100,w=30,h=18}},area)
 ok(box and box.y==100 and box.h==18, 'selection bounds')
+
+-- EPUB positions that differ only in wrapping or inline markup have the same
+-- structural paragraph identity. Distinct paragraphs have distinct keys.
+local akey=L.paragraphKey('/body/DocFragment[1]/body/div/p[2]/span/text().16')
+local bkey=L.paragraphKey('/body/DocFragment[1]/body/div/p[2]/em/text().45')
+local ckey=L.paragraphKey('/body/DocFragment[1]/body/div/p[3]/text().0')
+ok(akey==bkey and akey~=ckey, 'EPUB paragraph boundaries use native DOM')
+ok(L.paragraphKey('/body/DocFragment/body/ul/li[4]/text().0')
+    ~=L.paragraphKey('/body/DocFragment/body/ul/li[5]/text().0'),
+    'list items are independent reading units')
+ok(L.paragraphKey('not-an-xpointer')==nil,'unknown position is not misidentified')
+local long_lines={}
+for i=1,9 do long_lines[i]={x=40,y=40*i,w=360,h=25,area=area} end
+local keys={}
+for i=1,9 do
+    keys[i]=i<=7 and akey or ckey
+end
+local starts=L.paragraphStarts(long_lines,keys)
+ok(#starts==2 and starts[1]==1 and starts[2]==8,
+    'seven-line EPUB paragraph stays intact beyond five-line limit')
+local first,last=L.paragraphRange(long_lines,starts,4)
+ok(first==1 and last==7,'current paragraph range from any member line')
+ok(L.slotRange(long_lines,first,last).h>200,'full paragraph visible window')
+ok(select(1,L.paragraphAdvance(starts,1,1))==8,
+    'next advances to next paragraph')
+ok(select(1,L.paragraphAdvance(starts,8,-1))==1,
+    'previous returns to preceding paragraph')
+ok(select(2,L.paragraphAdvance(starts,8,1))==1
+    and select(2,L.paragraphAdvance(starts,1,-1))==-1,
+    'end-of-page paragraph navigation delegates real page turn')
+local contiguous={}
+for i=1,4 do contiguous[i]={x=40,y=40*i,w=350,h=25,area=area} end
+contiguous[3].y=180
+contiguous[4].y=220
+local detected=L.paragraphStarts(contiguous,{})
+ok(detected[2]==3,'PDF empty-line fallback starts new paragraph')
+local short={}
+for i=1,4 do short[i]={x=40,y=i*40,w=350,h=25,area=area} end
+short[2].w=100
+local breaks=L.paragraphStarts(short,{})
+ok(breaks[2]==3,'PDF short final line begins following paragraph')
+local indented={}
+for i=1,4 do indented[i]={x=40,y=i*40,w=350,h=25,area=area} end
+indented[3].x=85
+ok(L.paragraphStarts(indented,{})[2]==3,'PDF indented paragraph begins new unit')
+local right_area={x=500,y=0,w=400,h=800}
+long_lines[8].area=right_area
+long_lines[9].area=right_area
+local columns=L.paragraphStarts(long_lines,keys)
+ok(columns[2]==8 and L.slotRange(long_lines,1,9).area==area,
+    'separate reading areas never merge into one focus window')
 print('PASS: '..n..' logic checks')

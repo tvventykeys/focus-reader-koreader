@@ -57,6 +57,138 @@ function Logic.normaliseLines(boxes, area)
     return lines
 end
 
+
+-- Parse CRe's DOM-backed XPointers. A paragraph's <p> (or list item,
+-- heading, etc.) remains the same across wrapped visual lines and pages.
+-- Never infer an EPUB paragraph solely from horizontal line width.
+function Logic.paragraphKey(xpointer)
+    if type(xpointer) ~= "string" or xpointer:sub(1, 1) ~= "/" then return nil end
+    local path, semantic, fallback = "", nil, nil
+    for part in xpointer:gmatch("/([^/]+)") do
+        local name = part:match("^([%a][%w%-]*)")
+        if name then
+            path = path .. "/" .. part
+            if name == "p" or name == "li" or name == "dt"
+                    or name == "dd" or name == "pre" or name == "blockquote"
+                    or name:match("^h[1-6]$") then
+                semantic = path
+            elseif name == "div" then
+                fallback = path
+            end
+        end
+    end
+    return semantic or fallback
+end
+
+-- PDF lacks HTML paragraph semantics. Prefer conservative clues (a blank
+-- line, an indented new line, or a short preceding last line). These are
+-- estimates, unlike the structural EPUB XPointer keys.
+local function geometricBreak(prev, current, typical_width, typical_x, typical_gap)
+    if prev.area ~= current.area then return true end
+    local gap = current.y - (prev.y + prev.h)
+    if gap > math.max(math.max(prev.h, current.h) * 0.85,
+            (typical_gap or gap) * 1.65) then return true end
+    if current.x > typical_x + math.max(10, current.h * 0.8) then return true end
+    if typical_width > 0 and prev.w < typical_width * 0.68
+            and current.x <= typical_x + math.max(6, current.h * 0.35) then
+        return true
+    end
+    return false
+end
+
+-- Keys are optional, indexed to visual lines. A changed *structural* key
+-- always starts another paragraph; missing keys fall back to visual cues.
+-- The first visible line is always an anchor, even if the paragraph began
+-- on the preceding page. A change of column/page area also starts an anchor.
+function Logic.paragraphStarts(lines, keys)
+    local starts = {}
+    if #lines == 0 then return starts end
+    local width, left, gaps = {}, {}, {}
+    for _, line in ipairs(lines) do
+        local a = line.area
+        width[a] = math.max(width[a] or 0, line.w)
+        left[a] = math.min(left[a] or line.x, line.x)
+    end
+    for i=2,#lines do
+        local prev, line = lines[i-1], lines[i]
+        if prev.area == line.area then
+            local gap = line.y - (prev.y+prev.h)
+            if gap >= 0 then
+                gaps[line.area] = math.min(gaps[line.area] or gap, gap)
+            end
+        end
+    end
+    starts[1] = 1
+    for i = 2, #lines do
+        local prev, current = lines[i-1], lines[i]
+        local previous_key, key = keys and keys[i-1], keys and keys[i]
+        local estimated = geometricBreak(prev, current,
+            width[current.area] or 0, left[current.area] or current.x,
+            gaps[current.area])
+        -- A stable semantic EPUB paragraph key overrides line-wrap geometry.
+        -- A 'div' key is often only a chapter wrapper, so allow geometric
+        -- splitting inside it when no finer DOM paragraph element exists.
+        local stable_semantic = key and previous_key and key == previous_key
+            and not key:match("/div%[?%d*%]?$")
+        if prev.area ~= current.area or (key and previous_key and key ~= previous_key)
+                or (estimated and not stable_semantic) then
+            starts[#starts+1] = i
+        end
+    end
+    return starts
+end
+
+function Logic.paragraphRange(lines, starts, index)
+    if #lines == 0 then return nil, nil end
+    index = clamp(index, 1, #lines)
+    local first, last = 1, #lines
+    for i, start in ipairs(starts or {}) do
+        if start <= index then
+            first = start
+            last = (starts[i+1] or (#lines+1)) - 1
+        else
+            break
+        end
+    end
+    for i=first+1,last do
+        if lines[i].area ~= lines[first].area then last = i-1; break end
+    end
+    return first, last
+end
+
+function Logic.paragraphAdvance(starts, index, direction)
+    if #starts == 0 then return nil, direction end
+    local anchor = 1
+    for i=1,#starts do
+        if starts[i] <= index then anchor = i else break end
+    end
+    if direction > 0 then
+        if starts[anchor+1] then return starts[anchor+1], nil end
+        return nil, 1
+    elseif direction < 0 then
+        if starts[anchor-1] then return starts[anchor-1], nil end
+        return nil, -1
+    end
+    return starts[anchor], nil
+end
+
+-- Unlike fixed 1–5-line windows, a paragraph can span any number of
+-- visible lines. Clamp the active rectangle to its own column/page area.
+function Logic.slotRange(lines, first_index, last_index)
+    if #lines == 0 or not first_index or not last_index then return nil end
+    local first = lines[first_index]
+    if not first then return nil end
+    local last = first
+    for i=first_index+1,math.min(last_index,#lines) do
+        if lines[i].area ~= first.area then break end
+        last = lines[i]
+    end
+    local top = math.max(first.area.y, first.y - 2)
+    local bottom = math.min(first.area.y+first.area.h, last.y+last.h+2)
+    return {x=first.area.x, y=top, w=first.area.w,
+        h=math.max(0,bottom-top), area=first.area}
+end
+
 function Logic.maxStart(lines, count)
     return math.max(1, #lines - clamp(count, 1, 5) + 1)
 end
