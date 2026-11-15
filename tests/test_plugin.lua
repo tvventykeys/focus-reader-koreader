@@ -96,8 +96,15 @@ check(instance.supported and view.focusreader==instance,'plugin loaded and regis
 check(type(menu_items.focusreader)=='table','menu registered')
 check(menu_items.focusreader.sorting_hint=='tools','Tools menu location')
 local items=menu_items.focusreader.sub_item_table
-check(#items==5,'five menu sections including advance by')
-check(items[2].text=='Reading mode' and #items[2].sub_item_table==3,'reading mode includes both spotlight layouts')
+check(#items==6,'six menu sections including Freeform Focus')
+check(items[2].text=='Reading mode' and #items[2].sub_item_table==4,
+    'reading mode includes both spotlight layouts and Freeform Focus')
+check(items[2].sub_item_table[4].text=='Freeform Focus (no text needed)',
+    'no-text Freeform reading mode is selectable')
+check(items[6].text=='Freeform Focus'
+    and items[6].sub_item_table[1].text=='Window height'
+    and #items[6].sub_item_table[1].sub_item_table==8,
+    'Freeform height presets are available separately')
 check(items[3].text=='Highlight Focus' and #items[3].sub_item_table==5,'highlight includes PDF style, word mode and diagnostics')
 check(items[3].sub_item_table[5].text=='Word navigation diagnostic','diagnostic menu item registered')
 check(items[5].text=='Spotlight Focus' and #items[5].sub_item_table==3,'spotlight lines, mask and image background color')
@@ -628,4 +635,115 @@ pdf:stop()
 pdf:setStepMode('line')
 check(pdfpaging.onGotoViewRel==pdfturn,
     'paragraph PDF controls are restored when plugin stops')
+
+-- Freeform Focus must work with *no text backend at all*. No extraction,
+-- transforms or OCR should be invoked on image-only PDF pages.
+pdfpaging.current_page = 1
+pdfdoc.getTextFromPositions = function()
+    error('Freeform mode must not query text positions')
+end
+pdf:setStyle('freeform')
+pdf:setFreeformHeight(25)
+check(pdf.freeform_height==25 and stored.freeform_height==25,
+    'Freeform height setting is separate and persists')
+pdf:setSpotlightMaskColor('black')
+pdf:start()
+check(pdf.enabled and #pdf.lines==0 and pdfpaging.onGotoViewRel~=pdfturn,
+    'image-only PDF Freeform starts and intercepts clicker without text')
+local one=pdf:getSlot()
+check(one and one.h==225 and one.y==0 and one.w==600,
+    'Freeform starts with quarter-page clear band')
+local blackout={}
+local freeform_bb={paintRect=function(_,x,y,w,h,color)
+    blackout[#blackout+1]={x=x,y=y,w=w,h=h,color=color}
+end}
+pdf:paintTo(freeform_bb,0,0)
+check(#blackout==1 and blackout[1].y==225 and blackout[1].h==675
+    and blackout[1].color=='BLACK',
+    'Freeform masks below the clear first band even with zero text')
+pdfpaging:onGotoViewRel(1)
+check(pdf.freeform_index==2 and pdf:getSlot().y==225,
+    'clicker advances one geometric window')
+blackout={}
+pdf:paintTo(freeform_bb,0,0)
+check(#blackout==2 and blackout[1].h==225
+    and blackout[2].y==450 and blackout[2].h==450,
+    'middle window masks above and below without touching clear band')
+pdfpaging:onGotoViewRel(-1)
+check(pdf.freeform_index==1,
+    'reverse clicker returns to previous geometric window')
+for _=1,3 do pdfpaging:onGotoViewRel(1) end
+check(pdf.freeform_index==4 and pdf:getSlot().y==675,
+    'last Freeform window reaches bottom without missing text/image pixels')
+pdfpaging:onGotoViewRel(1)
+check(pdfpaging.current_page==2 and pdf.freeform_index==1,
+    'Freeform automatically turns the real page at bottom')
+pdf:onPageUpdate()
+check(pdf.freeform_index==1 and pdf.enabled,
+    'delayed page updates do not reset or stop Freeform')
+pdfpaging:onGotoViewRel(-1)
+check(pdfpaging.current_page==1 and pdf.freeform_index==4,
+    'reverse page-turn begins at final Freeform window')
+pdf:setFreeformHeight(50)
+check(pdf:getSlot().h==450 and pdf.freeform_index==2,
+    'changing window height preserves approximate reading position')
+pdf:setSpotlightMaskColor('white')
+blackout={}
+pdf:paintTo(freeform_bb,0,0)
+check(#blackout>0 and blackout[1].color=='WHITE',
+    'Freeform reuses Spotlight white mask preference')
+pdf.spotlight_image_path='/test/koreader/screensavers/forest.png'
+pdf:setSpotlightMaskColor('image')
+local freeform_image_blits=0
+local image_freeform={
+    paintRect=function() end,
+    pmulalphablitFrom=function() freeform_image_blits=freeform_image_blits+1 end,
+}
+pdf:paintTo(image_freeform,0,0)
+check(freeform_image_blits>0,
+    'Freeform reuses alpha-aware custom image masks')
+pdf:setSpotlightMaskColor('black')
+pdfview.footer_visible = true
+pdfview.footer={getHeight=function() return 80 end}
+pdf:onReaderFooterVisibilityChange()
+check(pdf:getSlot().area.h==820 and pdf:getSlot().y+pdf:getSlot().h<=820,
+    'Freeform avoids reader footer after a layout change')
+pdfview.footer_visible = false
+pdf:onScreenResize()
+check(pdf:getSlot().area.h==900,
+    'Freeform restores full viewport after screen resizing')
+pdf:stop()
+check(pdfpaging.onGotoViewRel==pdfturn,
+    'stopping Freeform restores original page-turn implementation')
+
+-- A PDF without even an exposed getTextFromPositions API is still accepted
+-- for Freeform; selecting a text mode fails safely without trapping buttons.
+pdfdoc.getTextFromPositions=nil
+check(pdf:isSupported(),'PDF Freeform requires no text extraction API')
+pdf:setStyle('freeform')
+pdf:start()
+check(pdf.enabled,'Freeform works without any PDF text API')
+pdf:onPageUpdate()
+check(pdf.enabled,'image-only Freeform page update is harmless')
+local show_before=manager.show
+local freeform_warning=0
+manager.show=function() freeform_warning=freeform_warning+1 end
+pdf:setStyle('color')
+manager.show=show_before
+check(not pdf.enabled and freeform_warning==1
+    and pdfpaging.onGotoViewRel==pdfturn,
+    'switching to unavailable text focus stops safely and restores controls')
+pdfdoc.getTextFromPositions=original_pdf_text
+pdf:start()
+check(pdf.enabled and #pdf.lines==2,
+    'normal PDF text focusing works again after leaving Freeform')
+pdf:setStyle('freeform')
+check(pdf.enabled and #pdf.lines==0,
+    'switching live from text focus to Freeform clears text dependency')
+pdf:setStyle('color')
+check(pdf.enabled and #pdf.lines==2,
+    'switching live back to text focus rebuilds text geometry')
+pdf:stop()
+check(pdfpaging.onGotoViewRel==pdfturn,
+    'existing PDF turning restored after live mode changes')
 print('PASS: '..checks..' mocked KOReader checks')
