@@ -96,14 +96,19 @@ check(instance.supported and view.focusreader==instance,'plugin loaded and regis
 check(type(menu_items.focusreader)=='table','menu registered')
 check(menu_items.focusreader.sorting_hint=='tools','Tools menu location')
 local items=menu_items.focusreader.sub_item_table
-check(#items==4,'four simple menu sections')
+check(#items==5,'five menu sections including advance by')
 check(items[2].text=='Reading mode' and #items[2].sub_item_table==3,'reading mode includes both spotlight layouts')
 check(items[3].text=='Highlight Focus' and #items[3].sub_item_table==5,'highlight includes PDF style, word mode and diagnostics')
 check(items[3].sub_item_table[5].text=='Word navigation diagnostic','diagnostic menu item registered')
-check(items[4].text=='Spotlight Focus' and #items[4].sub_item_table==3,'spotlight lines, mask and image background color')
-check(items[4].sub_item_table[3].text=='Image background color' and #items[4].sub_item_table[3].sub_item_table==2,
+check(items[5].text=='Spotlight Focus' and #items[5].sub_item_table==3,'spotlight lines, mask and image background color')
+check(items[5].sub_item_table[3].text=='Image background color' and #items[5].sub_item_table[3].sub_item_table==2,
     'image background provides black and white choices')
 check(items[3].sub_item_table[1].text=='Color' and items[3].sub_item_table[2].text=='Focused lines','highlight color + lines labels')
+check(items[4].text=='Advance by' and #items[4].sub_item_table==2,
+    'advance by exposes line and group navigation')
+check(items[4].sub_item_table[1].text=='One line'
+    and items[4].sub_item_table[2].text=='Whole focused group',
+    'advance choices labeled correctly')
 local labels={}
 local function scan(a)
  for _,e in ipairs(a) do
@@ -117,8 +122,8 @@ check(not label_text:find('opacity') and not label_text:find('refresh') and not 
 check(#items[3].sub_item_table[1].sub_item_table==6,'six colors available')
 check(#items[3].sub_item_table[2].sub_item_table==5,'highlight lines 1-5 available')
 check(items[3].sub_item_table[4].text=='Word-by-word (no speech)','word focus toggle exists')
-check(#items[4].sub_item_table[1].sub_item_table==5,'spotlight lines 1-5 available')
-check(#items[4].sub_item_table[2].sub_item_table==4,'black, white, image and chooser available')
+check(#items[5].sub_item_table[1].sub_item_table==5,'spotlight lines 1-5 available')
+check(#items[5].sub_item_table[2].sub_item_table==4,'black, white, image and chooser available')
 instance:start()
 check(instance.enabled and roll.onGotoViewRel~=original,'start installs clicker hook')
 local selected=false
@@ -144,16 +149,16 @@ local bb={paints=0, paintRect=function(self,_,_,w,h,color) self.paints=self.pain
 instance:paintTo(bb,0,0)
 check(bb.paints>=1,'blackout drawn')
 check(instance.spotlight_mask_color=='black','old settings default to black')
-items[4].sub_item_table[2].sub_item_table[2].callback()
+items[5].sub_item_table[2].sub_item_table[2].callback()
 check(instance.spotlight_mask_color=='white' and stored.spotlight_mask_color=='white','white mask preference saved')
 local white_bb={paints=0,paintRect=function(self,_,_,w,h,color) self.paints=self.paints+1; assert(color=='WHITE') end}
 instance:paintTo(white_bb,0,0)
 check(white_bb.paints>0,'white mask painted')
-items[4].sub_item_table[2].sub_item_table[1].callback()
+items[5].sub_item_table[2].sub_item_table[1].callback()
 check(instance.spotlight_mask_color=='black','black can be restored')
 items[2].sub_item_table[3].callback() -- guide
 check(instance.style=='mask' and instance.spotlight_layout=='guide','spotlight guide selected')
-items[4].sub_item_table[1].sub_item_table[3].callback()
+items[5].sub_item_table[1].sub_item_table[3].callback()
 check(instance.legacy_line_count==3 and stored.legacy_line_count==3,'independent spotlight lines saved')
 items[2].sub_item_table[1].callback()
 check(instance.style=='color','switch back to highlight focus')
