@@ -1101,8 +1101,9 @@ function FocusReader:setColor(name)
 end
 
 function FocusReader:setStyle(style)
-    style = style == "mask" and "mask" or "color"
+    style = (style == "mask" or style == "freeform") and style or "color"
     if self.style == style then return end
+    local previous_style = self.style
     -- On some KOReader/device builds native selection is unavailable. Never
     -- replace a working Spotlight session with a blank color highlight.
     if self.enabled and style == "color" and not self.ui.paging and self.pdf_highlight_style ~= "underline" and not self:canUseNativeColor() then
@@ -1118,8 +1119,17 @@ function FocusReader:setStyle(style)
     self.style = style
     self.settings:saveSetting("style", style)
     if self.enabled then
-        -- Changing modes can also change the active focus window size.
-        if self:isParagraphFocus() then
+        -- Crossing the Freeform boundary must rebuild the appropriate
+        -- geometry. Text modes never inherit an empty Freeform lines table.
+        if previous_style == "freeform" or style == "freeform" then
+            if not self:refreshActiveFocus(true) then
+                self:stop()
+                UIManager:show(require("ui/widget/infomessage"):new{
+                    text = _("No readable text positions were found on this page. Freeform Focus works without text positions."),
+                })
+                return
+            end
+        elseif self:isParagraphFocus() then
             self:refreshParagraphs()
             self.index = self:paragraphRange() or 1
         else
@@ -1146,6 +1156,31 @@ function FocusReader:setWordMode(enabled)
         self.settings:saveSetting("step_mode", "line")
     end
     if was_enabled then self:start() end
+end
+
+function FocusReader:setFreeformHeight(percent)
+    local allowed = {[10]=true,[15]=true,[20]=true,[25]=true,
+        [30]=true,[40]=true,[50]=true,[75]=true}
+    if not allowed[percent] or self.freeform_height == percent then return end
+    local old_slot = self.enabled and self.style == "freeform" and self:getSlot() or nil
+    self.freeform_height = percent
+    self.settings:saveSetting("freeform_height", percent)
+    if self.enabled and self.style == "freeform" then
+        if not self:refreshFreeform(false) then
+            self:stop()
+            return
+        end
+        if old_slot then
+            local height = Logic.freeformWindowHeight(self.freeform_area, percent)
+            if height then
+                local relative_top = old_slot.y - old_slot.area.y
+                local near_index = math.floor(relative_top / height + 0.5) + 1
+                self.freeform_index = math.max(1, math.min(near_index,
+                    Logic.freeformLastIndex(self.freeform_area, percent)))
+            end
+        end
+        self:redraw(true)
+    end
 end
 
 function FocusReader:setStepMode(mode)
@@ -1179,7 +1214,7 @@ function FocusReader:onPageUpdate()
     if not self.enabled then return end
     local new_location = self:getLocation()
     local changed = new_location ~= self.location
-    if not self:refreshLines(changed) and self.ui.paging then
+    if not self:refreshActiveFocus(changed) and self.ui.paging then
         self:stop()
         return
     end
@@ -1191,7 +1226,7 @@ FocusReader.onPosUpdate = FocusReader.onPageUpdate
 function FocusReader:onScreenResize()
     self:releaseMaskImage()
     if not self.enabled then return end
-    if not self:refreshLines(false) and self.ui.paging then
+    if not self:refreshActiveFocus(false) and self.ui.paging then
         self:stop()
         return
     end
@@ -1201,7 +1236,7 @@ end
 
 function FocusReader:onReaderFooterVisibilityChange()
     if not self.enabled then return end
-    if not self:refreshLines(false) and self.ui.paging then
+    if not self:refreshActiveFocus(false) and self.ui.paging then
         self:stop()
         return
     end
@@ -1240,7 +1275,19 @@ end
 
 function FocusReader:addToMainMenu(menu_items)
     -- Keep the top-level menu focused on reading, not refresh internals.
-    local color_line_items, spotlight_line_items = {}, {}
+    local color_line_items, spotlight_line_items, freeform_height_items = {}, {}, {}
+    for _, percent in ipairs({10, 15, 20, 25, 30, 40, 50, 75}) do
+        local size = percent
+        freeform_height_items[#freeform_height_items + 1] = {
+            text = tostring(size) .. _("% of page height"),
+            checked_func = function() return self.freeform_height == size end,
+            check_callback_closes_menu = true,
+            callback = function(menu)
+                self:closeSettingsMenu(menu)
+                self:setFreeformHeight(size)
+            end,
+        }
+    end
     for n = 1, 5 do
         local count = n
         local label = tostring(count) .. (count == 1 and _(" line") or _(" lines"))
@@ -1330,6 +1377,15 @@ function FocusReader:addToMainMenu(menu_items)
                             self:closeSettingsMenu(menu)
                             self:setSpotlightLayout("guide")
                             self:setStyle("mask")
+                        end,
+                    },
+                    {
+                        text = _("Freeform Focus (no text needed)"),
+                        checked_func = function() return self.style == "freeform" end,
+                        check_callback_closes_menu = true,
+                        callback = function(menu)
+                            self:closeSettingsMenu(menu)
+                            self:setStyle("freeform")
                         end,
                     },
                 },
