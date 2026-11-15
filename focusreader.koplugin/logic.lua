@@ -163,9 +163,11 @@ function Logic.paragraphAdvance(starts, index, direction)
         if starts[i] <= index then anchor = i else break end
     end
     if direction > 0 then
-        return starts[anchor+1], starts[anchor+1] and nil or 1
+        if starts[anchor+1] then return starts[anchor+1], nil end
+        return nil, 1
     elseif direction < 0 then
-        return starts[anchor-1], starts[anchor-1] and nil or -1
+        if starts[anchor-1] then return starts[anchor-1], nil end
+        return nil, -1
     end
     return starts[anchor], nil
 end
