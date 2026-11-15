@@ -104,10 +104,11 @@ check(items[5].text=='Spotlight Focus' and #items[5].sub_item_table==3,'spotligh
 check(items[5].sub_item_table[3].text=='Image background color' and #items[5].sub_item_table[3].sub_item_table==2,
     'image background provides black and white choices')
 check(items[3].sub_item_table[1].text=='Color' and items[3].sub_item_table[2].text=='Focused lines','highlight color + lines labels')
-check(items[4].text=='Advance by' and #items[4].sub_item_table==2,
-    'advance by exposes line and group navigation')
+check(items[4].text=='Advance by' and #items[4].sub_item_table==3,
+    'advance by exposes line, group and paragraph navigation')
 check(items[4].sub_item_table[1].text=='One line'
-    and items[4].sub_item_table[2].text=='Whole focused group',
+    and items[4].sub_item_table[2].text=='Whole focused group'
+    and items[4].sub_item_table[3].text=='Whole paragraph',
     'advance choices labeled correctly')
 local labels={}
 local function scan(a)
@@ -565,4 +566,57 @@ pdf:start()
 check(pdf.enabled and #pdf.lines==2,
     'PDF focus can restart after returning to a supported layout')
 pdf:stop()
+
+-- EPUB paragraph integration: CRengine XPointers identify seven-line
+-- paragraphs, while the mock still supplies its original text-box geometry.
+instance:setStyle('color')
+instance:setPDFHighlightStyle('tint')
+instance:setWordMode(false)
+instance:setStepMode('line')
+doc.getWordFromPosition = function(_,pos)
+    local p = pos.y < 345 and '2' or '3'
+    return {pos0='/body/DocFragment/body/div/p['..p..']/span/text().12'}
+end
+instance:start()
+check(instance.enabled and #instance.lines==12,
+    'paragraph integration fixture started with twelve visual lines')
+instance:setStepMode('paragraph')
+check(instance.step_mode=='paragraph' and stored.step_mode=='paragraph',
+    'paragraph setting persists and is activated immediately')
+check(#instance.paragraph_starts==2 and instance.paragraph_starts[1]==1
+    and instance.paragraph_starts[2]==7,
+    'structural EPUB paragraphs detected from CRe positions')
+local first_para=instance:getSlot()
+check(first_para.h>200,'paragraph focus highlights six lines, not just 1–5')
+roll:onGotoViewRel(1)
+check(instance.index==7,'clicker next advances to next paragraph')
+local next_para=instance:getSlot()
+check(next_para.y>first_para.y,'second paragraph has separate highlight window')
+roll:onGotoViewRel(-1)
+check(instance.index==1,'clicker previous returns to prior paragraph')
+instance:setStyle('mask')
+check(instance:getSlot().h==first_para.h,
+    'Spotlight also focuses an entire paragraph')
+instance:setStepMode('line')
+check(instance.step_mode=='line' and stored.step_mode=='line',
+    'line mode remains selectable after paragraph mode')
+instance:setStepMode('paragraph')
+roll:onGotoViewRel(-1)
+check(page>=1,'backward boundary delegates page control safely')
+instance:stop()
+doc.getWordFromPosition = nil
+
+-- The PDF fallback also uses paragraph anchors without touching XPointers.
+pdfdoc.getTextFromPositions = original_pdf_text
+pdf:setStepMode('paragraph')
+pdf:start()
+check(pdf.enabled and #pdf.paragraph_starts>=1,
+    'PDF paragraph fallback produces at least one safe focus unit')
+local pdf_para_first=pdf:getSlot()
+check(pdf_para_first and pdf_para_first.h>0,
+    'PDF paragraph highlight has bounded geometry')
+pdf:stop()
+pdf:setStepMode('line')
+check(pdfpaging.onGotoViewRel==pdfturn,
+    'paragraph PDF controls are restored when plugin stops')
 print('PASS: '..checks..' mocked KOReader checks')
