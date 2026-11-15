@@ -662,8 +662,12 @@ end
 
 function FocusReader:loadMaskImage()
     local is_cover = self.spotlight_mask_color == "cover"
-    local path = is_cover and self.ui and self.ui.document and self.ui.document.file
-        or self.spotlight_image_path
+    local path
+    if is_cover then
+        path = self.ui and self.ui.document and self.ui.document.file
+    else
+        path = self.spotlight_image_path
+    end
     if (not is_cover and self.spotlight_mask_color ~= "image")
             or type(path) ~= "string" or path == "" then
         return nil
