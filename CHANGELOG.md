@@ -1,3 +1,11 @@
+## v1.2.1-beta.4 — development preview (2026-11-15)
+
+- Settings selections stay open while users change colors, focus sizes, stepping, and masks; Start/Stop still returns to reading.
+- Added optional **Current book cover** for Spotlight and Freeform masks using KOReader's in-memory cover API; no cover files are exported, and missing covers fall back to the configured solid backing color.
+- Expanded whole-viewport UI recomposition for white and illustrated Spotlight masks to reduce stale PaperDots regions between within-page steps. Does not force a flashing e-ink full refresh or guarantee elimination of hardware ghosting.
+- Preserves scanned-PDF Freeform navigation, line/group/paragraph modes, separate user preferences, and normal page turning when stopped.
+- Kobo/PaperDots hardware acceptance is still pending.
+
 # Changelog
 
 ## v1.2.0 — 2026-11-14

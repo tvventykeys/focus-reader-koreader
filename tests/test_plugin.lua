@@ -131,7 +131,8 @@ check(#items[3].sub_item_table[1].sub_item_table==6,'six colors available')
 check(#items[3].sub_item_table[2].sub_item_table==5,'highlight lines 1-5 available')
 check(items[3].sub_item_table[4].text=='Word-by-word (no speech)','word focus toggle exists')
 check(#items[5].sub_item_table[1].sub_item_table==5,'spotlight lines 1-5 available')
-check(#items[5].sub_item_table[2].sub_item_table==4,'black, white, image and chooser available')
+check(#items[5].sub_item_table[2].sub_item_table==5,
+    'black, white, custom image, current cover and chooser available')
 instance:start()
 check(instance.enabled and roll.onGotoViewRel~=original,'start installs clicker hook')
 local selected=false
@@ -206,22 +207,19 @@ doc.getTextFromXPointers = original_color_method
 manager.show = orig_show
 instance:stop()
 
--- The actual KOReader TouchMenu keeps an item with checked_func open
--- unless the callback explicitly closes it; check_callback_closes_menu also
--- prevents a stale updateItems() after the menu has closed.
+-- KOReader's checked settings stay open and refresh their checkmarks by
+-- default. Only Start/Stop and informational diagnostics deliberately close.
 local function driveMenu(item)
     local trace = {}
     local fake = {
         closeMenu = function() trace[#trace + 1] = 'close' end,
         updateItems = function() trace[#trace + 1] = 'update' end,
     }
-    local before_dirty = #dirty
     local original_setDirty = require('ui/uimanager').setDirty
     require('ui/uimanager').setDirty = function(self, widget, mode, region)
         trace[#trace + 1] = 'paint'
-        original_setDirty(self,widget,mode,region)
+        original_setDirty(self, widget, mode, region)
     end
-    -- Mirror KOReader TouchMenu:onMenuSelect checked/normal leaf logic.
     item.callback(fake)
     if item.checked or item.checked_func then
         if not (item.check_callback_updates_menu or item.check_callback_closes_menu) then
@@ -231,52 +229,48 @@ local function driveMenu(item)
         fake:closeMenu()
     end
     require('ui/uimanager').setDirty = original_setDirty
-    check(#trace >= 1 and trace[1] == 'close', 'menu closes first')
-    check(trace[2] ~= 'close', 'menu closes only once')
-    check(not table.concat(trace,','):find('update'), 'no updateItems after checked menu closes')
-    if #dirty > before_dirty then
-        check(trace[1] == 'close' and trace[2] == 'paint', 'menu closes before repaint')
+    local is_start_stop = item.text == nil and item.text_func ~= nil
+    if is_start_stop then
+        check(trace[1] == 'close', 'Start/Stop returns directly to the book')
+    else
+        check(not table.concat(trace, ','):find('close'),
+            'adjusting a setting never closes the configuration')
+        if item.checked_func then
+            check(trace[#trace] == 'update', 'checked setting refreshes menu')
+        else
+            check(item.keep_menu_open == true,
+                'non-checked file picker leaves settings open')
+        end
     end
 end
--- Exercise every leaf entry, each with a mock touch menu; this also catches
--- checked entries not flagged check_callback_closes_menu.
 local function eachLeaf(list)
-    for _, entry in ipairs(list) do
+    for _,entry in ipairs(list) do
         if entry.sub_item_table then
             eachLeaf(entry.sub_item_table)
         elseif entry.callback and entry.text ~= 'Word navigation diagnostic' then
-            -- Informational action deliberately opens InfoMessage; test its
-            -- registration separately rather than treating it as a setting.
             if entry.checked_func then
-                check(entry.check_callback_closes_menu == true,
-                    'checked entry suppresses updateItems on menu close')
+                check(not entry.check_callback_closes_menu,
+                    'checked setting uses native menu refresh')
             end
             driveMenu(entry)
         end
     end
 end
--- Starting from the stopped state makes all options safe; mode and line
--- settings are saved even with Focus Reader stopped.
 check(not instance.enabled, 'menu test starts stopped')
 eachLeaf(items)
--- Start/Stop was encountered once; if Start left it enabled, stop cleanly.
 if instance.enabled then instance:stop() end
-check(roll.onGotoViewRel == original, 'menu actions leave clicker clean after stop')
+check(roll.onGotoViewRel == original, 'menu sweep restores page controls')
 
--- Actual ReaderMenu offers onTapCloseMenu(), which closes both the
--- top TouchMenu and the bottom config panel. Prefer it over TouchMenu-only
--- closeMenu to avoid the lingering bottom-toolbar regression.
 local reader_closed = 0
-local touch_closed = 0
 ui.menu.onTapCloseMenu = function() reader_closed = reader_closed + 1 end
-local touch = {closeMenu=function() touch_closed = touch_closed + 1 end}
-instance:closeSettingsMenu(touch)
-check(reader_closed == 1 and touch_closed == 0,
-    'ReaderMenu close path preferred to close bottom panel')
--- A checked setting must use the preferred ReaderMenu close pathway too.
+local touch = {closeMenu=function() error('TouchMenu fallback should not run') end}
+-- Choosing a color must leave the full settings stack open.
 items[3].sub_item_table[1].sub_item_table[1].callback(touch)
-check(reader_closed == 2 and touch_closed == 0,
-    'color selection closes full reader menu and bottom config')
+check(reader_closed == 0, 'color change keeps ReaderMenu open')
+-- Start/Stop is an intentional exception: return to the book to read.
+items[1].callback(touch)
+check(reader_closed == 1, 'Start/Stop closes ReaderMenu once')
+if instance.enabled then instance:stop() end
 ui.menu.onTapCloseMenu = nil
 
 -- Word navigation must skip whitespace and standalone punctuation, including
@@ -458,6 +452,53 @@ instance:paintTo(missing_white,0,0)
 check(missing_white.painted>0,'missing image safely falls back to white backing')
 instance:setSpotlightImageBaseColor('black')
 instance:stop()
+instance:setSpotlightMaskColor('black')
+instance:setStyle(original_style)
+
+-- Book-cover masks use KOReader's native, in-memory current-book cover API.
+-- A cover is decoded once and freed on Stop, never written to the filesystem.
+doc.file = '/test/books/example.epub'
+local covers_requested, covers_freed = 0, 0
+ui.bookinfo = {
+    getCoverImage = function(_, current_doc, filename)
+        check(current_doc == doc and filename == doc.file,
+            'book cover request uses the currently opened book')
+        covers_requested = covers_requested + 1
+        return {
+            getWidth = function() return 600 end,
+            getHeight = function() return 900 end,
+            getType = function() return 'RGB32' end,
+            free = function() covers_freed = covers_freed + 1 end,
+        }
+    end,
+}
+instance:setStyle('mask')
+instance:setSpotlightMaskColor('cover')
+check(instance.spotlight_mask_color == 'cover'
+    and stored.spotlight_mask_color == 'cover',
+    'book cover mode persists as a separate mask choice')
+instance:start()
+local cover_before = #image_blits
+instance:paintTo(image_bb, 0, 0)
+instance:paintTo(image_bb, 0, 0)
+check(#image_blits > cover_before and covers_requested == 1,
+    'current cover is drawn and cached during repeated focus steps')
+instance:stop()
+check(covers_freed == 1, 'cached current cover is freed on Stop')
+-- Missing artwork is a safe fallback and failed lookups are cached.
+local no_cover_calls = 0
+ui.bookinfo.getCoverImage = function()
+    no_cover_calls = no_cover_calls + 1
+    return nil
+end
+instance:start()
+instance:paintTo(fallback, 0, 0)
+instance:paintTo(fallback, 0, 0)
+check(no_cover_calls == 1,
+    'missing cover uses black fallback without repeated extraction attempts')
+instance:stop()
+ui.bookinfo = nil
+doc.file = nil
 instance:setSpotlightMaskColor('black')
 instance:setStyle(original_style)
 

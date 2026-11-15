@@ -1,3 +1,18 @@
+# Beta 4 acceptance tests — Kobo hardware needed
+
+This checklist supplements the existing mocked Lua checks; mark hardware results only after running the packaged Beta 4 ZIP on a Kobo.
+
+- [ ] Change Highlight color, focused lines, Spotlight mask color, group/paragraph stepping and Freeform height; each setting should preserve the currently open menu panel and update its checkmark.
+- [ ] Start / Stop Focus Reader; the menu should close and clicker/page-turn behavior should remain correct.
+- [ ] Under **Spotlight Focus → Mask color**, select **Current book cover (when available)** on an EPUB with a known cover; verify the cover fills masked regions only and the reading window stays clear.
+- [ ] Try the same option on a PDF or EPUB without cover art; verify the black/white fallback without a crash, stall or repeated file access.
+- [ ] Switch between custom PNG, book cover, solid white and solid black. Rotate the device, close/open a different book, and restart KOReader; verify masks and settings are not borrowed from the previous book.
+- [ ] With PaperDots enabled, advance and reverse **whole groups** inside a page using white Spotlight Reading Window and Reading Guide; compare stale dots with Beta 3.
+- [ ] Repeat with PaperDots disabled, with custom image / book-cover masks, and with Freeform Focus on scanned PDFs.
+- [ ] Check that the full-viewport redraw does not cause disruptive flashes or excessive lag; visible e-ink ghosting may still require device-level full-refresh tuning.
+
+## Prior testing guidance
+
 # Testing and compatibility
 
 ## v1.1.0 release verification
