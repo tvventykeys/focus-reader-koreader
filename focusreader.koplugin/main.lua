@@ -737,6 +737,13 @@ function FocusReader:redraw(whole_view, previous_slot, previous_native_bounds)
         end
         if combined then region = Geom:new(combined) end
     end
+    -- Image masks and translucent panel patterns can retain stale e-ink
+    -- pixels when only a narrow dirty region is repainted. Recompose the
+    -- complete document viewport for image masks, rather than accumulating
+    -- previous group artifacts during repeated advances.
+    if self.style == "mask" and self.spotlight_mask_color == "image" then
+        region = nil
+    end
     UIManager:setDirty(self.view.dialog, "ui", region)
 end
 
@@ -1193,6 +1200,29 @@ function FocusReader:addToMainMenu(menu_items)
                           self:closeSettingsMenu(menu)
                           self:showWordDiagnostics()
                       end },
+                },
+            },
+            {
+                text = _("Advance by"),
+                sub_item_table = {
+                    {
+                        text = _("One line"),
+                        checked_func = function() return self.step_mode == "line" end,
+                        check_callback_closes_menu = true,
+                        callback = function(menu)
+                            self:closeSettingsMenu(menu)
+                            self:setStepMode("line")
+                        end,
+                    },
+                    {
+                        text = _("Whole focused group"),
+                        checked_func = function() return self.step_mode == "block" end,
+                        check_callback_closes_menu = true,
+                        callback = function(menu)
+                            self:closeSettingsMenu(menu)
+                            self:setStepMode("block")
+                        end,
+                    },
                 },
             },
             {
