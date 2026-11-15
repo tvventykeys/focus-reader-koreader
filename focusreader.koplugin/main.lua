@@ -23,6 +23,8 @@ local FocusReader = Widget:extend{
     line_count = 3,         -- Native color mode; existing v0.4.2 setting.
     opacity = 56,         -- Fixed original default; never read old opacity preferences.
     legacy_line_count = 3, -- Independent Spotlight Focus reading window.
+    freeform_height = 25, -- Independent percent of viewport height; no OCR or text APIs.
+    freeform_index = 1,
     spotlight_layout = "window", -- window (above & below) or guide (below only).
     spotlight_mask_color = "black", -- black, white, or optional custom image.
     spotlight_image_base_color = "black", -- independent background behind image.
@@ -54,6 +56,11 @@ function FocusReader:init()
     self.spotlight_image_base_color = self.settings:readSetting("spotlight_image_base_color") == "white"
         and "white" or "black"
     self.spotlight_image_path = self.settings:readSetting("spotlight_image_path")
+    local saved_freeform_height = self.settings:readSetting("freeform_height")
+    self.freeform_height = ({[10]=true,[15]=true,[20]=true,[25]=true,
+        [30]=true,[40]=true,[50]=true,[75]=true})[saved_freeform_height]
+        and saved_freeform_height or 25
+    self.freeform_index = 1
     self._mask_image = nil
     self._mask_image_key = nil
     local saved_step = self.settings:readSetting("step_mode")
@@ -64,7 +71,9 @@ function FocusReader:init()
     -- One refresh path only, regardless of previously saved experiment keys.
     -- Never start precise/wide_wait, screen-wide or accelerated refreshes.
     self.refresh_mode = "focused"
-    self.style = self.settings:readSetting("style") == "mask" and "mask" or "color"
+    local saved_style = self.settings:readSetting("style")
+    self.style = (saved_style == "mask" or saved_style == "freeform")
+        and saved_style or "color"
     local chosen = self.settings:readSetting("color_name")
     self.color_name = ({yellow=true, orange=true, green=true, cyan=true,
         blue=true, pink=true})[chosen] and chosen or "yellow"
@@ -106,7 +115,9 @@ end
 function FocusReader:isSupported()
     local doc = self.ui and self.ui.document
     return self.ui and (self.ui.rolling or self.ui.paging) and doc
-        and type(doc.getTextFromPositions) == "function"
+        -- Image-only PDFs need no text API in Freeform Focus. Keep the
+        -- existing backend requirement for EPUB/rolling sessions.
+        and (self.ui.paging or type(doc.getTextFromPositions) == "function")
         and (self.ui.paging or type(doc.getCurrentPage) == "function")
         and (self.ui.paging or type(doc.getCurrentPos) == "function")
         and (self.ui.paging or type(doc.getVisiblePageCount) == "function")
@@ -198,6 +209,31 @@ end
 
 function FocusReader:paragraphRange()
     return Logic.paragraphRange(self.lines, self.paragraph_starts or {}, self.index)
+end
+
+-- Freeform Focus uses only the visible viewport. It intentionally never
+-- invokes text extraction, paragraph geometry, OCR, or page transforms.
+-- Retain a separate step index so text mode preferences stay untouched.
+function FocusReader:refreshFreeform(reset_index)
+    if not self.supported or not self.enabled then return false end
+    self.location = self:getLocation()
+    local area = self:getViewport()
+    local last = Logic.freeformLastIndex(area, self.freeform_height)
+    if last == 0 then return false end
+    self.freeform_area = area
+    self.areas = {area}
+    self.lines, self.paragraph_starts, self.words = {}, {}, nil
+    if reset_index then
+        self.freeform_index = self._page_direction == -1 and last or 1
+    else
+        self.freeform_index = math.max(1, math.min(self.freeform_index or 1, last))
+    end
+    return true
+end
+
+function FocusReader:refreshActiveFocus(reset_index)
+    if self.style == "freeform" then return self:refreshFreeform(reset_index) end
+    return self:refreshLines(reset_index)
 end
 
 function FocusReader:refreshLines(reset_index)
@@ -502,6 +538,10 @@ function FocusReader:showWordDiagnostics()
 end
 
 function FocusReader:getSlot()
+    if self.style == "freeform" then
+        return Logic.freeformSlot(self.freeform_area, self.freeform_height,
+            self.freeform_index)
+    end
     if self:isParagraphFocus() then
         local first, last = self:paragraphRange()
         return Logic.slotRange(self.lines, first, last)
@@ -694,6 +734,20 @@ end
 
 function FocusReader:paintTo(bb, x, y)
     if not self.supported or not self.enabled then return end
+    if self.style == "freeform" then
+        -- A clear viewport band between two opaque masks. The page may be
+        -- nothing but a scanned image: neither text nor paragraph geometry
+        -- is required to draw or advance this window.
+        local slot = self:getSlot()
+        if not slot then return end
+        local area = slot.area
+        local top = math.max(area.y, math.min(slot.y, area.y + area.h))
+        local bottom = math.max(area.y, math.min(slot.y + slot.h, area.y + area.h))
+        self:shade(bb, x + area.x, y + area.y, area.w, top - area.y)
+        self:shade(bb, x + area.x, y + bottom,
+            area.w, area.y + area.h - bottom)
+        return
+    end
     if self:usesOverlayHighlight() then
         -- Temporary, non-annotation PDF overlay. Unlike CRengine, MuPDF does
         -- not expose a mutable selection color. Blend over the rendered page.
@@ -797,7 +851,9 @@ function FocusReader:redraw(whole_view, previous_slot, previous_native_bounds)
     -- pixels when only a narrow dirty region is repainted. Recompose the
     -- complete document viewport for image masks, rather than accumulating
     -- previous group artifacts during repeated advances.
-    if self.style == "mask" and self.spotlight_mask_color == "image" then
+    if self.style == "freeform" or (self.style == "mask"
+            and self.spotlight_mask_color == "image") then
+        -- Recompose the full viewport to avoid stale e-ink mask artifacts.
         region = nil
     end
     UIManager:setDirty(self.view.dialog, "ui", region)
@@ -840,7 +896,7 @@ function FocusReader:turnPage(direction)
     if after ~= before and self.location ~= after then
         -- A platform that did not synchronously emit PageUpdate still needs
         -- the new page's text boxes. Avoid a duplicate repaint otherwise.
-        if not self:refreshLines(true) and self.ui.paging then
+        if not self:refreshActiveFocus(true) and self.ui.paging then
             self:stop()
         else
             if self.style == "color" and not self:usesOverlayHighlight() then self:applyNativeSelection() end
@@ -857,6 +913,18 @@ end
 
 function FocusReader:moveFocus(direction)
     if not self.enabled then return false end
+    if self.style == "freeform" then
+        local index, page_direction = Logic.freeformAdvance(
+            self.freeform_area, self.freeform_height,
+            self.freeform_index, direction)
+        if page_direction then return self:turnPage(page_direction) end
+        if index ~= self.freeform_index then
+            local old_slot = self:getSlot()
+            self.freeform_index = index
+            self:redraw(false, old_slot)
+        end
+        return true
+    end
     local active_count = self:getFocusLineCount()
     local sequence = self.word_mode and self.style == "color" and not self.ui.paging and self.words or self.lines
     local index, page_direction
@@ -895,8 +963,10 @@ function FocusReader:start()
     end
     self.enabled = true
     self._page_direction = nil
-    self:refreshLines(true)
-    if #self.lines == 0 or (self.word_mode and self.style == "color" and not self.ui.paging and #(self.words or {}) == 0) then
+    local ready = self:refreshActiveFocus(true)
+    if not ready or (self.style ~= "freeform" and self.word_mode
+            and self.style == "color" and not self.ui.paging
+            and #(self.words or {}) == 0) then
         self.enabled = false
         UIManager:show(require("ui/widget/infomessage"):new{
             text = _("No readable text positions were found on this page."),
@@ -952,7 +1022,9 @@ function FocusReader:setSpotlightMaskColor(color)
     self.spotlight_mask_color = color
     if color ~= "image" then self:releaseMaskImage() end
     self.settings:saveSetting("spotlight_mask_color", color)
-    if self.enabled and self.style == "mask" then self:redraw(true) end
+    if self.enabled and (self.style == "mask" or self.style == "freeform") then
+        self:redraw(true)
+    end
 end
 
 function FocusReader:setSpotlightImageBaseColor(color)
@@ -960,7 +1032,7 @@ function FocusReader:setSpotlightImageBaseColor(color)
     if self.spotlight_image_base_color == color then return end
     self.spotlight_image_base_color = color
     self.settings:saveSetting("spotlight_image_base_color", color)
-    if self.enabled and self.style == "mask"
+    if self.enabled and (self.style == "mask" or self.style == "freeform")
             and self.spotlight_mask_color == "image" then
         self:redraw(true)
     end
@@ -983,7 +1055,9 @@ function FocusReader:chooseSpotlightImage()
         self.settings:saveSetting("spotlight_image_path", path)
         self:releaseMaskImage()
         self:setSpotlightMaskColor("image")
-        if self.enabled and self.style == "mask" then self:redraw(true) end
+        if self.enabled and (self.style == "mask" or self.style == "freeform") then
+            self:redraw(true)
+        end
     end, current, nil, filter)
 end
 
