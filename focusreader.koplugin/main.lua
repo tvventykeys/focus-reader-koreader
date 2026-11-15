@@ -52,7 +52,8 @@ function FocusReader:init()
     self.spotlight_layout = self.settings:readSetting("spotlight_layout") == "guide"
         and "guide" or "window"
     local mask = self.settings:readSetting("spotlight_mask_color")
-    self.spotlight_mask_color = (mask == "white" or mask == "image") and mask or "black"
+    self.spotlight_mask_color = (mask == "white" or mask == "image" or mask == "cover")
+        and mask or "black"
     self.spotlight_image_base_color = self.settings:readSetting("spotlight_image_base_color") == "white"
         and "white" or "black"
     self.spotlight_image_path = self.settings:readSetting("spotlight_image_path")
@@ -660,37 +661,71 @@ function FocusReader:releaseMaskImage()
 end
 
 function FocusReader:loadMaskImage()
-    local path = self.spotlight_image_path
-    if self.spotlight_mask_color ~= "image" or type(path) ~= "string" or path == "" then
+    local is_cover = self.spotlight_mask_color == "cover"
+    local path
+    if is_cover then
+        path = self.ui and self.ui.document and self.ui.document.file
+    else
+        path = self.spotlight_image_path
+    end
+    if (not is_cover and self.spotlight_mask_color ~= "image")
+            or type(path) ~= "string" or path == "" then
         return nil
     end
     local width, height = Screen:getWidth(), Screen:getHeight()
-    local key = path .. ":" .. tostring(width) .. "x" .. tostring(height)
-    if self._mask_image and self._mask_image_key == key then return self._mask_image end
+    local key = (is_cover and "cover:" or "image:") .. path .. ":"
+        .. tostring(width) .. "x" .. tostring(height)
+    -- Cache unsuccessful lookups as well: missing covers must not trigger
+    -- repeated PDF/EPUB cover extraction on every e-ink repaint.
+    if self._mask_image_key == key then return self._mask_image end
     self:releaseMaskImage()
-    local ok, image = pcall(RenderImage.renderImageFile, RenderImage, path, false, width, height)
-    if ok and image and type(image.getWidth) == "function"
+
+    local image
+    if is_cover then
+        -- Use KOReader's cover API directly; never export copyrighted pages
+        -- or create a second copy of the current book's cover on disk.
+        local info = self.ui and self.ui.bookinfo
+        if not info or type(info.getCoverImage) ~= "function" then
+            local ok, bookinfo = pcall(require, "apps/filemanager/filemanagerbookinfo")
+            if ok then info = bookinfo end
+        end
+        if info and type(info.getCoverImage) == "function" then
+            local ok, cover = pcall(info.getCoverImage, info, self.ui.document, path)
+            if ok then image = cover end
+        end
+    else
+        local ok, rendered = pcall(RenderImage.renderImageFile,
+            RenderImage, path, false, width, height)
+        if ok then image = rendered end
+    end
+    if image and type(image.getWidth) == "function"
             and type(image.getHeight) == "function" then
         if image:getWidth() ~= width or image:getHeight() ~= height then
-            -- The renderer may preserve source aspect ratio. Fit the image
-            -- explicitly to the screen so mask regions use matching pixels.
-            local resized, scaled = pcall(RenderImage.scaleBlitBuffer,
+            local ok, resized = pcall(RenderImage.scaleBlitBuffer,
                 RenderImage, image, width, height)
-            image = resized and scaled or nil
+            if ok and resized then
+                if resized ~= image and type(image.free) == "function" then
+                    pcall(image.free, image)
+                end
+                image = resized
+            end
         end
         if image and image:getWidth() == width and image:getHeight() == height then
-            self._mask_image, self._mask_image_key = image, key
+            self._mask_image = image
+        elseif image and type(image.free) == "function" then
+            pcall(image.free, image)
         end
-    elseif ok and image and type(image.free) == "function" then
+    elseif image and type(image.free) == "function" then
         pcall(image.free, image)
     end
+    self._mask_image_key = key
     return self._mask_image
 end
 
 function FocusReader:shade(bb, x, y, w, h)
     x, y, w, h = math.floor(x), math.floor(y), math.floor(w), math.floor(h)
     if w <= 0 or h <= 0 then return end
-    if self.spotlight_mask_color == "image" then
+    if self.spotlight_mask_color == "image" or self.spotlight_mask_color == "cover" then
         local base = self.spotlight_image_base_color == "white"
             and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
         -- KOReader's MuPDF image renderer supplies premultiplied alpha for
@@ -847,13 +882,12 @@ function FocusReader:redraw(whole_view, previous_slot, previous_native_bounds)
         end
         if combined then region = Geom:new(combined) end
     end
-    -- Image masks and translucent panel patterns can retain stale e-ink
-    -- pixels when only a narrow dirty region is repainted. Recompose the
-    -- complete document viewport for image masks, rather than accumulating
-    -- previous group artifacts during repeated advances.
+    -- For white or illustrated masks, PaperDots/partial compositing can
+    -- retain previously exposed rows. Recompose the whole reader viewport
+    -- after each step; keep the narrow path for solid black Spotlight.
+    -- This is a UI redraw, not a forced flashing full e-ink refresh.
     if self.style == "freeform" or (self.style == "mask"
-            and self.spotlight_mask_color == "image") then
-        -- Recompose the full viewport to avoid stale e-ink mask artifacts.
+            and self.spotlight_mask_color ~= "black") then
         region = nil
     end
     UIManager:setDirty(self.view.dialog, "ui", region)
@@ -1017,10 +1051,11 @@ function FocusReader:setLegacyLines(count)
 end
 
 function FocusReader:setSpotlightMaskColor(color)
-    color = (color == "white" or color == "image") and color or "black"
+    color = (color == "white" or color == "image" or color == "cover")
+        and color or "black"
     if self.spotlight_mask_color == color then return end
+    self:releaseMaskImage()
     self.spotlight_mask_color = color
-    if color ~= "image" then self:releaseMaskImage() end
     self.settings:saveSetting("spotlight_mask_color", color)
     if self.enabled and (self.style == "mask" or self.style == "freeform") then
         self:redraw(true)
@@ -1033,7 +1068,8 @@ function FocusReader:setSpotlightImageBaseColor(color)
     self.spotlight_image_base_color = color
     self.settings:saveSetting("spotlight_image_base_color", color)
     if self.enabled and (self.style == "mask" or self.style == "freeform")
-            and self.spotlight_mask_color == "image" then
+            and (self.spotlight_mask_color == "image"
+                 or self.spotlight_mask_color == "cover") then
         self:redraw(true)
     end
 end
@@ -1281,9 +1317,7 @@ function FocusReader:addToMainMenu(menu_items)
         freeform_height_items[#freeform_height_items + 1] = {
             text = tostring(size) .. _("% of page height"),
             checked_func = function() return self.freeform_height == size end,
-            check_callback_closes_menu = true,
             callback = function(menu)
-                self:closeSettingsMenu(menu)
                 self:setFreeformHeight(size)
             end,
         }
@@ -1294,18 +1328,14 @@ function FocusReader:addToMainMenu(menu_items)
         color_line_items[#color_line_items + 1] = {
             text = label,
             checked_func = function() return self.line_count == count end,
-            check_callback_closes_menu = true,
             callback = function(menu)
-                self:closeSettingsMenu(menu)
                 self:setLines(count)
             end,
         }
         spotlight_line_items[#spotlight_line_items + 1] = {
             text = label,
             checked_func = function() return self.legacy_line_count == count end,
-            check_callback_closes_menu = true,
             callback = function(menu)
-                self:closeSettingsMenu(menu)
                 self:setLegacyLines(count)
             end,
         }
@@ -1321,9 +1351,7 @@ function FocusReader:addToMainMenu(menu_items)
         color_items[#color_items + 1] = {
             text = _(label),
             checked_func = function() return self.color_name == value end,
-            check_callback_closes_menu = true,
             callback = function(menu)
-                self:closeSettingsMenu(menu)
                 self:setColor(value)
             end,
         }
@@ -1349,9 +1377,7 @@ function FocusReader:addToMainMenu(menu_items)
                     {
                         text = _("Highlight Focus"),
                         checked_func = function() return self.style == "color" end,
-                        check_callback_closes_menu = true,
                         callback = function(menu)
-                            self:closeSettingsMenu(menu)
                             self:setStyle("color")
                         end,
                     },
@@ -1360,9 +1386,7 @@ function FocusReader:addToMainMenu(menu_items)
                         checked_func = function()
                             return self.style == "mask" and self.spotlight_layout == "window"
                         end,
-                        check_callback_closes_menu = true,
                         callback = function(menu)
-                            self:closeSettingsMenu(menu)
                             self:setSpotlightLayout("window")
                             self:setStyle("mask")
                         end,
@@ -1372,9 +1396,7 @@ function FocusReader:addToMainMenu(menu_items)
                         checked_func = function()
                             return self.style == "mask" and self.spotlight_layout == "guide"
                         end,
-                        check_callback_closes_menu = true,
                         callback = function(menu)
-                            self:closeSettingsMenu(menu)
                             self:setSpotlightLayout("guide")
                             self:setStyle("mask")
                         end,
@@ -1382,9 +1404,7 @@ function FocusReader:addToMainMenu(menu_items)
                     {
                         text = _("Freeform Focus (no text needed)"),
                         checked_func = function() return self.style == "freeform" end,
-                        check_callback_closes_menu = true,
                         callback = function(menu)
-                            self:closeSettingsMenu(menu)
                             self:setStyle("freeform")
                         end,
                     },
@@ -1398,24 +1418,18 @@ function FocusReader:addToMainMenu(menu_items)
                     { text = _("Highlight style (EPUB / PDF)"), sub_item_table = {
                         { text = _("Native EPUB highlight / PDF light tint"),
                           checked_func = function() return self.pdf_highlight_style == "tint" end,
-                          check_callback_closes_menu = true,
                           callback = function(menu)
-                              self:closeSettingsMenu(menu)
                               self:setPDFHighlightStyle("tint")
                           end },
                         { text = _("Underline only (EPUB / PDF)"),
                           checked_func = function() return self.pdf_highlight_style == "underline" end,
-                          check_callback_closes_menu = true,
                           callback = function(menu)
-                              self:closeSettingsMenu(menu)
                               self:setPDFHighlightStyle("underline")
                           end },
                     } },
                     { text = _("Word-by-word (no speech)"),
                       checked_func = function() return self.word_mode end,
-                      check_callback_closes_menu = true,
                       callback = function(menu)
-                          self:closeSettingsMenu(menu)
                           self:setWordMode(not self.word_mode)
                       end },
                     { text = _("Word navigation diagnostic"),
@@ -1431,27 +1445,21 @@ function FocusReader:addToMainMenu(menu_items)
                     {
                         text = _("One line"),
                         checked_func = function() return self.step_mode == "line" end,
-                        check_callback_closes_menu = true,
                         callback = function(menu)
-                            self:closeSettingsMenu(menu)
                             self:setStepMode("line")
                         end,
                     },
                     {
                         text = _("Whole focused group"),
                         checked_func = function() return self.step_mode == "block" end,
-                        check_callback_closes_menu = true,
                         callback = function(menu)
-                            self:closeSettingsMenu(menu)
                             self:setStepMode("block")
                         end,
                     },
                     {
                         text = _("Whole paragraph"),
                         checked_func = function() return self.step_mode == "paragraph" end,
-                        check_callback_closes_menu = true,
                         callback = function(menu)
-                            self:closeSettingsMenu(menu)
                             self:setStepMode("paragraph")
                         end,
                     },
@@ -1464,32 +1472,31 @@ function FocusReader:addToMainMenu(menu_items)
                     { text = _("Mask color"), sub_item_table = {
                         { text = _("Black (default)"),
                           checked_func = function() return self.spotlight_mask_color == "black" end,
-                          check_callback_closes_menu = true,
                           callback = function(menu)
-                              self:closeSettingsMenu(menu)
                               self:setSpotlightMaskColor("black")
                           end },
                         { text = _("White"),
                           checked_func = function() return self.spotlight_mask_color == "white" end,
-                          check_callback_closes_menu = true,
                           callback = function(menu)
-                              self:closeSettingsMenu(menu)
                               self:setSpotlightMaskColor("white")
                           end },
                         { text = _("Custom image (from screensavers)"),
                           checked_func = function() return self.spotlight_mask_color == "image" end,
-                          check_callback_closes_menu = true,
                           callback = function(menu)
-                              self:closeSettingsMenu(menu)
                               if self.spotlight_image_path then
                                   self:setSpotlightMaskColor("image")
                               else
                                   self:chooseSpotlightImage()
                               end
                           end },
+                        { text = _("Current book cover (when available)"),
+                          checked_func = function() return self.spotlight_mask_color == "cover" end,
+                          callback = function()
+                              self:setSpotlightMaskColor("cover")
+                          end },
                         { text = _("Choose custom image..."),
+                          keep_menu_open = true,
                           callback = function(menu)
-                              self:closeSettingsMenu(menu)
                               self:chooseSpotlightImage()
                           end },
                     } },
@@ -1498,18 +1505,14 @@ function FocusReader:addToMainMenu(menu_items)
                           checked_func = function()
                               return self.spotlight_image_base_color == "black"
                           end,
-                          check_callback_closes_menu = true,
                           callback = function(menu)
-                              self:closeSettingsMenu(menu)
                               self:setSpotlightImageBaseColor("black")
                           end },
                         { text = _("White"),
                           checked_func = function()
                               return self.spotlight_image_base_color == "white"
                           end,
-                          check_callback_closes_menu = true,
                           callback = function(menu)
-                              self:closeSettingsMenu(menu)
                               self:setSpotlightImageBaseColor("white")
                           end },
                     } },

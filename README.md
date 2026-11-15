@@ -52,10 +52,16 @@ Expected path (Kobo): `.adds/koreader/plugins/focusreader.koplugin/main.lua`
 - Reading mode: Highlight Focus / Spotlight Focus: Reading Window / Spotlight Focus: Reading Guide / **Freeform Focus (no text needed)**
 - Highlight Focus: Color, Focused lines (1–5), Tint + underline or Underline only (EPUB/PDF), Word-by-word navigation (no speech)
 - Advance by: One line / Whole focused group / **Whole paragraph** (paragraph mode overrides the fixed line count)
-- Spotlight Focus: Focused lines (1–5), Mask color (Black / White / Custom image), Choose custom image from KOReader's screensavers directory, Image background color (Black / White). Transparent PNG areas show the selected background color without altering the artwork.
+- Spotlight Focus: Focused lines (1–5), Mask color (Black / White / Custom image / **Current book cover**), Choose custom image from KOReader's screensavers directory, Image background color (Black / White). Transparent PNG areas and unavailable book covers show the selected background color without altering the artwork.
 - Freeform Focus: **Window height** as a percentage of the visible page. The same Spotlight mask color/image settings also apply to Freeform; it always uses a moving window, not the Reading Guide.
 
 Use the same buttons or clicker inputs that already turn pages in KOReader. A click normally moves by one visual line; the chosen advancement mode is stored across sessions. Stop Focus Reader to restore normal page turning.
+
+## What's new in v1.2.1 Beta 4
+
+- Focus Reader setting choices stay open so you can make several adjustments without reopening the menu; Start/Stop still returns to the book.
+- **Current book cover (when available)** is an optional Spotlight / Freeform mask background. The cover is fetched in memory from KOReader; no book image is exported to disk.
+- White and image-based Spotlight masks now request a full reader-viewport UI recomposition on each step to address stale PaperDots pixels. This is **not** an e-ink flashing full refresh, and real Kobo testing is required.
 
 ## What's new (unreleased Freeform Focus preview)
 
@@ -82,7 +88,7 @@ Use the same buttons or clicker inputs that already turn pages in KOReader. A cl
 - **v1.2.0** brings the new image-background options and all v1.1 improvements together. Transparency rendering has been visually verified on a Kobo Libra Colour; PDF compatibility on a Kindle Scribe is still awaiting confirmation.
 - Word navigation groups common contractions and skips standalone whitespace and punctuation; text extraction and geometry can still vary with fonts, document engines, and layouts.
 - Text-based PDF Highlight/Spotlight still relies on MuPDF text geometry. Fixed-layout and reflowed PDF behavior may differ. Freeform Focus works without text geometry, including on scanned/image-only pages; it does not OCR them or follow page content automatically. The reading band covers the reader viewport, not a detected PDF text column.
-- PaperDots can be used alongside Focus Reader; appearance depends on its own settings and the screen refresh/rendering order. Compatibility on other devices is not guaranteed.
+- PaperDots can be used alongside Focus Reader; Beta 4 makes an experimental UI redraw change for white/illustrated masks, but physical ghosting and PaperDots' own refresh behavior remain hardware-dependent.
 - Tested interactively on Kobo Libra Colour with KOReader during development; mocked Lua regression tests are not a substitute for testing every document and device.
 - Works with page-turn controls recognized by KOReader; it does not pair/configure Bluetooth hardware or handle audio.
 - No network access, telemetry, or book-text upload.
