@@ -56,7 +56,8 @@ function FocusReader:init()
     self.spotlight_image_path = self.settings:readSetting("spotlight_image_path")
     self._mask_image = nil
     self._mask_image_key = nil
-    self.step_mode = self.settings:readSetting("step_mode") == "block" and "block" or "line"
+    local saved_step = self.settings:readSetting("step_mode")
+    self.step_mode = (saved_step == "paragraph" or saved_step == "block") and saved_step or "line"
     self.word_mode = self.settings:readSetting("word_mode") == true
     self.pdf_highlight_style = self.settings:readSetting("pdf_highlight_style") == "underline"
         and "underline" or "tint"
@@ -67,7 +68,7 @@ function FocusReader:init()
     local chosen = self.settings:readSetting("color_name")
     self.color_name = ({yellow=true, orange=true, green=true, cyan=true,
         blue=true, pink=true})[chosen] and chosen or "yellow"
-    self.lines, self.areas = {}, {}
+    self.lines, self.areas, self.paragraph_starts = {}, {}, {}
     self._native_bounds = nil
     -- Deliberately do not auto-start a previous session.
 end
@@ -167,6 +168,38 @@ end
 
 -- PDF backends may return no geometry (diagrams/scans) or raise during a
 -- reflow/rotation transition. Never let that exception escape into KOReader.
+-- Build one anchor per visible paragraph. EPUB uses CRengine's semantic
+-- XPointer paths; PDF falls back to visible-line layout estimates.
+function FocusReader:refreshParagraphs()
+    local keys = {}
+    if not self.ui.paging then
+        local doc = self.ui.document
+        if doc and type(doc.getWordFromPosition) == "function" then
+            for i, line in ipairs(self.lines) do
+                local mid_y = math.floor(line.y + line.h / 2)
+                for _, fraction in ipairs({0.04, 0.18, 0.5}) do
+                    local pos = {x=math.floor(line.x + math.max(1, line.w * fraction)), y=mid_y}
+                    local ok, word = pcall(doc.getWordFromPosition, doc, pos, true)
+                    if ok and word and word.pos0 then
+                        local key = Logic.paragraphKey(word.pos0)
+                        if key then keys[i] = key; break end
+                    end
+                end
+            end
+        end
+    end
+    self.paragraph_starts = Logic.paragraphStarts(self.lines, keys)
+end
+
+function FocusReader:isParagraphFocus()
+    return self.step_mode == "paragraph" and not (self.word_mode
+        and self.style == "color" and not self.ui.paging)
+end
+
+function FocusReader:paragraphRange()
+    return Logic.paragraphRange(self.lines, self.paragraph_starts or {}, self.index)
+end
+
 function FocusReader:refreshLines(reset_index)
     local ok = pcall(self._refreshLinesUnsafe, self, reset_index)
     if not ok then
@@ -263,7 +296,16 @@ function FocusReader:_refreshLinesUnsafe(reset_index)
     end
     local active_count = self:getFocusLineCount()
     local sequence = self.word_mode and self.style == "color" and not self.ui.paging and self.words or self.lines
-    if reset_index then
+    if self:isParagraphFocus() then
+        self:refreshParagraphs()
+        if reset_index then
+            self.index = self._page_direction == -1
+                and (self.paragraph_starts[#self.paragraph_starts] or 1) or 1
+        else
+            self.index = (select(1, Logic.paragraphRange(self.lines,
+                self.paragraph_starts, math.min(self.index, #self.lines)))) or 1
+        end
+    elseif reset_index then
         self.index = self._page_direction == -1
             and Logic.maxStart(sequence, active_count) or 1
     else
@@ -460,6 +502,10 @@ function FocusReader:showWordDiagnostics()
 end
 
 function FocusReader:getSlot()
+    if self:isParagraphFocus() then
+        local first, last = self:paragraphRange()
+        return Logic.slotRange(self.lines, first, last)
+    end
     local sequence = self.word_mode and self.style == "color" and not self.ui.paging and self.words or self.lines
     return Logic.slot(sequence or {}, self.index, self:getFocusLineCount())
 end
@@ -515,7 +561,14 @@ function FocusReader:applyNativeSelection()
         return false
     end
     local last = first
-    for j = self.index + 1, self.word_mode and self.index or math.min(#self.lines, self.index + self.line_count - 1) do
+    local paragraph_end
+    if self:isParagraphFocus() then
+        local _
+        _, paragraph_end = self:paragraphRange()
+    end
+    local last_index = paragraph_end or (self.word_mode and self.index
+        or math.min(#self.lines, self.index + self.line_count - 1))
+    for j = self.index + 1, last_index do
         if self.lines[j].area ~= first.area then break end
         last = self.lines[j]
     end
@@ -649,6 +702,9 @@ function FocusReader:paintTo(bb, x, y)
         local sequence = self.word_mode and not self.ui.paging and self.words or self.lines
         local first = self.index
         local last = math.min(#sequence, first + count - 1)
+        if self:isParagraphFocus() then
+            first, last = self:paragraphRange()
+        end
         local rgb = PALETTE[self.color_name] or PALETTE.yellow
         -- KOReader composites this AFTER the PDF glyphs are rendered.
         -- Strong blending washes out black text; use a very faint tint
@@ -803,9 +859,15 @@ function FocusReader:moveFocus(direction)
     if not self.enabled then return false end
     local active_count = self:getFocusLineCount()
     local sequence = self.word_mode and self.style == "color" and not self.ui.paging and self.words or self.lines
-    local step = self.step_mode == "block" and active_count or 1
-    local index, page_direction = Logic.advance(sequence, self.index,
-        active_count, direction, step)
+    local index, page_direction
+    if self:isParagraphFocus() then
+        index, page_direction = Logic.paragraphAdvance(
+            self.paragraph_starts or {}, self.index, direction)
+    else
+        local step = self.step_mode == "block" and active_count or 1
+        index, page_direction = Logic.advance(sequence, self.index,
+            active_count, direction, step)
+    end
     if page_direction then return self:turnPage(page_direction) end
     if index ~= self.index then
         local old_slot = self:getSlot()
@@ -983,8 +1045,13 @@ function FocusReader:setStyle(style)
     self.settings:saveSetting("style", style)
     if self.enabled then
         -- Changing modes can also change the active focus window size.
-        self.index = math.min(self.index,
-            Logic.maxStart(self.lines, self:getFocusLineCount()))
+        if self:isParagraphFocus() then
+            self:refreshParagraphs()
+            self.index = self:paragraphRange() or 1
+        else
+            self.index = math.min(self.index,
+                Logic.maxStart(self.lines, self:getFocusLineCount()))
+        end
     end
     if self.enabled and style == "color" and not self:usesOverlayHighlight() then
         self:setNativeSelectionColor()
@@ -1000,12 +1067,38 @@ function FocusReader:setWordMode(enabled)
     if was_enabled then self:stop() end
     self.word_mode = enabled
     self.settings:saveSetting("word_mode", enabled)
+    if enabled and self.step_mode == "paragraph" then
+        self.step_mode = "line"
+        self.settings:saveSetting("step_mode", "line")
+    end
     if was_enabled then self:start() end
 end
 
 function FocusReader:setStepMode(mode)
-    self.step_mode = mode == "block" and "block" or "line"
-    self.settings:saveSetting("step_mode", self.step_mode)
+    mode = (mode == "block" or mode == "paragraph") and mode or "line"
+    if self.step_mode == mode then return end
+    local old_slot = self.enabled and self:getSlot() or nil
+    local old_native_bounds = self._native_bounds
+    -- Word-by-word and paragraph navigation cannot both drive the focus.
+    if mode == "paragraph" and self.word_mode then
+        self.word_mode = false
+        self.settings:saveSetting("word_mode", false)
+    end
+    self.step_mode = mode
+    self.settings:saveSetting("step_mode", mode)
+    if self.enabled then
+        if self:isParagraphFocus() then
+            self:refreshParagraphs()
+            self.index = self:paragraphRange() or 1
+        else
+            self.index = math.min(self.index,
+                Logic.maxStart(self.lines, self:getFocusLineCount()))
+        end
+        if self.style == "color" and not self:usesOverlayHighlight() then
+            self:applyNativeSelection()
+        end
+        self:redraw(false, old_slot, old_native_bounds)
+    end
 end
 
 function FocusReader:onPageUpdate()
@@ -1221,6 +1314,15 @@ function FocusReader:addToMainMenu(menu_items)
                         callback = function(menu)
                             self:closeSettingsMenu(menu)
                             self:setStepMode("block")
+                        end,
+                    },
+                    {
+                        text = _("Whole paragraph"),
+                        checked_func = function() return self.step_mode == "paragraph" end,
+                        check_callback_closes_menu = true,
+                        callback = function(menu)
+                            self:closeSettingsMenu(menu)
+                            self:setStepMode("paragraph")
                         end,
                     },
                 },
