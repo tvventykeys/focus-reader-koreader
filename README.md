@@ -6,8 +6,6 @@ Focus Reader is a free, offline KOReader plugin that moves a reading highlight o
 
 **Free · Open source · Offline · No tracking · No account required**
 
-## See it in action
-
 ![Side-by-side Focus Reader modes: Spotlight Focus with book-cover background and Highlight Focus with yellow highlighting](https://github.com/user-attachments/assets/5cbf405e-5908-49bc-aadc-b8dc4caf6e86)
 
 *Left: Spotlight Focus with the current book cover as a background. Right: Highlight Focus with a yellow line highlight. Both examples are from KOReader.*
@@ -47,9 +45,9 @@ Make Spotlight Focus your own with a picture instead of a plain black or white m
 
 These images change only the background around the reading window or guide — **not** your Kobo's sleep screen.
 
-| Custom background — example 1 | Custom background — example 2 |
+| Custom background — 1 | Custom background — 2 |
 |:---:|:---:|
-| ![Focus Reader reading window with a custom image background, example one](https://github.com/user-attachments/assets/0468ced6-1046-4081-a760-f40ad202aabe) | ![Focus Reader reading window with a custom image background, example two](https://github.com/user-attachments/assets/5bbbafb5-e91a-4bd4-bbe8-e53296e41cc8) |
+| <img src="https://github.com/user-attachments/assets/0468ced6-1046-4081-a760-f40ad202aabe" alt="Spotlight Focus custom image background, example one" width="220"> | <img src="https://github.com/user-attachments/assets/5bbbafb5-e91a-4bd4-bbe8-e53296e41cc8" alt="Spotlight Focus custom image background, example two" width="220"> |
 
 *Two real Kobo screenshots showing custom backgrounds in Spotlight Focus.*
 
