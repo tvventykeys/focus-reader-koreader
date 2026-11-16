@@ -567,7 +567,10 @@ function FocusReader:getSlot()
     end
     if self:isParagraphFocus() then
         local first, last = self:paragraphRange()
-        return Logic.slotRange(self.lines, first, last)
+        -- Prevent the preceding paragraph's strokes from appearing in a small
+        -- clear strip above the next paragraph's Reading Window.
+        local clean_top = self.style == "mask" and self.spotlight_layout == "window"
+        return Logic.slotRange(self.lines, first, last, clean_top and 0 or 2)
     end
     local sequence = self.word_mode and self.style == "color" and not self.ui.paging and self.words or self.lines
     return Logic.slot(sequence or {}, self.index, self:getFocusLineCount())
@@ -904,12 +907,13 @@ function FocusReader:redraw(whole_view, previous_slot, previous_native_bounds)
         end
         if combined then region = Geom:new(combined) end
     end
-    -- For white or illustrated masks, PaperDots/partial compositing can
-    -- retain previously exposed rows. Recompose the whole reader viewport
-    -- after each step; keep the narrow path for solid black Spotlight.
-    -- This is a UI redraw, not a forced flashing full e-ink refresh.
+    -- Recompose the reader viewport for white/illustrated masks and for
+    -- paragraph Reading Window, where a changing top edge may leave faint
+    -- remnants. This uses the nonflashing UI redraw path.
+    local clean_paragraph_window = self.style == "mask"
+        and self.spotlight_layout == "window" and self:isParagraphFocus()
     if self.style == "freeform" or (self.style == "mask"
-            and self.spotlight_mask_color ~= "black") then
+            and self.spotlight_mask_color ~= "black") or clean_paragraph_window then
         region = nil
     end
     UIManager:setDirty(self.view.dialog, "ui", region)
