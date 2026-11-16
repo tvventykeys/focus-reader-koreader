@@ -120,43 +120,83 @@ check(instance.supported and view.focusreader==instance,'plugin loaded and regis
 check(type(menu_items.focusreader)=='table','menu registered')
 check(menu_items.focusreader.sorting_hint=='tools','Tools menu location')
 local items=menu_items.focusreader.sub_item_table
-check(#items==6,'six menu sections including Freeform Focus')
-check(items[2].text=='Reading mode' and #items[2].sub_item_table==4,
-    'reading mode includes both spotlight layouts and Freeform Focus')
-check(items[2].sub_item_table[4].text=='Freeform Focus (no text needed)',
-    'no-text Freeform reading mode is selectable')
-check(items[6].text=='Freeform Focus'
-    and items[6].sub_item_table[1].text=='Window height'
-    and #items[6].sub_item_table[1].sub_item_table==8,
-    'Freeform height presets are available separately')
-check(items[3].text=='Highlight Focus' and #items[3].sub_item_table==5,'highlight includes PDF style, word mode and diagnostics')
-check(items[3].sub_item_table[5].text=='Word navigation diagnostic','diagnostic menu item registered')
-check(items[5].text=='Spotlight Focus' and #items[5].sub_item_table==3,'spotlight lines, mask and image background color')
-check(items[5].sub_item_table[3].text=='Image background color' and #items[5].sub_item_table[3].sub_item_table==2,
-    'image background provides black and white choices')
-check(items[3].sub_item_table[1].text=='Color' and items[3].sub_item_table[2].text=='Focused lines','highlight color + lines labels')
-check(items[4].text=='Advance by' and #items[4].sub_item_table==3,
-    'advance by exposes line, group and paragraph navigation')
-check(items[4].sub_item_table[1].text=='One line'
-    and items[4].sub_item_table[2].text=='Whole focused group'
-    and items[4].sub_item_table[3].text=='Whole paragraph',
-    'advance choices labeled correctly')
+check(#items==3,'main menu is Start/Stop, Focus mode and Settings only')
+check(items[2].text=='Focus mode' and #items[2].sub_item_table==4,
+    'Focus mode contains Highlight, both Spotlight layouts and Freeform')
+local mode_choices=items[2].sub_item_table
+check(mode_choices[4].text=='Freeform Focus (no text needed)',
+    'no-text Freeform mode remains selectable')
+check(items[3].text=='Settings' and #items[3].sub_item_table==3,
+    'Settings opens all three mode folders at once')
+local settings_folders=items[3].sub_item_table
+check(settings_folders[1].text=='Highlight Focus'
+    and settings_folders[2].text=='Spotlight Focus'
+    and settings_folders[3].text=='Freeform Focus',
+    'settings folders are ordered and labeled clearly')
+local highlight_settings=settings_folders[1].sub_item_table
+local spotlight_settings=settings_folders[2].sub_item_table
+local freeform_settings=settings_folders[3].sub_item_table
+check(#highlight_settings==6 and highlight_settings[1].text=='Color'
+    and highlight_settings[2].text=='Focused lines'
+    and highlight_settings[3].text=='Advance by',
+    'Highlight settings include color, focused lines and nested text navigation')
+check(#highlight_settings[1].sub_item_table==6
+    and #highlight_settings[2].sub_item_table==5,
+    'Highlight color and 1–5-line controls remain available')
+check(highlight_settings[3].sub_item_table[1].text=='One line'
+    and highlight_settings[3].sub_item_table[2].text=='Whole focused group'
+    and highlight_settings[3].sub_item_table[3].text=='Whole paragraph',
+    'shared Advance by settings keep all three options')
+check(highlight_settings[5].text=='Word-by-word (no speech)'
+    and highlight_settings[6].text=='Advanced'
+    and highlight_settings[6].sub_item_table[1].text=='Word navigation diagnostic',
+    'word navigation and diagnostics are preserved')
+check(#spotlight_settings==3
+    and spotlight_settings[1].text=='Focused lines'
+    and spotlight_settings[2].text=='Advance by'
+    and spotlight_settings[3].text=='Mask background',
+    'Spotlight settings keep focused lines, advance and mask controls')
+check(#spotlight_settings[1].sub_item_table==5
+    and #spotlight_settings[3].sub_item_table==6,
+    'Spotlight preserves 1–5 line presets, masks, image chooser and backing')
+check(#freeform_settings==2
+    and freeform_settings[1].text=='Window height'
+    and #freeform_settings[1].sub_item_table==8
+    and freeform_settings[2].text=='Mask background'
+    and #freeform_settings[2].sub_item_table==6,
+    'Freeform offers only window height and shared mask options, not text Advance by')
+check(spotlight_settings[3].sub_item_table == freeform_settings[2].sub_item_table,
+    'Spotlight and Freeform share the same mask settings')
+local image_settings=spotlight_settings[3].sub_item_table[6].sub_item_table
+check(spotlight_settings[3].sub_item_table[6].text=='Image background color'
+    and #image_settings==2,
+    'transparent-image backing options are inside Mask background')
+local old_style=instance.style
+local old_mask=instance.spotlight_mask_color
+instance.style='mask'
+check(#settings_folders==3
+    and settings_folders[1].sub_item_table==highlight_settings
+    and settings_folders[3].sub_item_table==freeform_settings,
+    'inactive Highlight and Freeform settings stay accessible in Spotlight')
+instance.style='freeform'
+check(#settings_folders==3
+    and settings_folders[1].sub_item_table==highlight_settings
+    and settings_folders[2].sub_item_table==spotlight_settings,
+    'inactive Highlight and Spotlight settings stay accessible in Freeform')
+instance.style=old_style
+instance.spotlight_mask_color=old_mask
 local labels={}
 local function scan(a)
- for _,e in ipairs(a) do
-   labels[#labels+1]=(e.text or '')
-   if e.sub_item_table then scan(e.sub_item_table) end
- end
+  for _,e in ipairs(a) do
+    labels[#labels+1]=(e.text or '')
+    if e.sub_item_table then scan(e.sub_item_table) end
+  end
 end
 scan(items)
 local label_text=table.concat(labels,';'):lower()
-check(not label_text:find('opacity') and not label_text:find('refresh') and not label_text:find('test') and not label_text:find('clicker'), 'hidden technical settings')
-check(#items[3].sub_item_table[1].sub_item_table==6,'six colors available')
-check(#items[3].sub_item_table[2].sub_item_table==5,'highlight lines 1-5 available')
-check(items[3].sub_item_table[4].text=='Word-by-word (no speech)','word focus toggle exists')
-check(#items[5].sub_item_table[1].sub_item_table==5,'spotlight lines 1-5 available')
-check(#items[5].sub_item_table[2].sub_item_table==5,
-    'black, white, custom image, current cover and chooser available')
+check(not label_text:find('opacity') and not label_text:find('refresh')
+    and not label_text:find('test') and not label_text:find('clicker'),
+    'technical options stay out of the visible settings')
 instance:onFocusReaderToggle()
 check(instance.enabled and roll.onGotoViewRel~=original,
     'gesture toggle starts focus and installs page-control hook')
@@ -178,34 +218,34 @@ for _=1,total do roll:onGotoViewRel(1) end
 check(page==2,'automatic next page')
 for _=1,total do roll:onGotoViewRel(-1) end
 check(page==1,'automatic previous page')
-items[3].sub_item_table[1].sub_item_table[2].callback()  -- orange
+highlight_settings[1].sub_item_table[2].callback()  -- orange
 check(instance.color_name=='orange' and stored.color_name=='orange','changing color saved')
-items[3].sub_item_table[2].sub_item_table[4].callback()
+highlight_settings[2].sub_item_table[4].callback()
 check(instance.line_count==4 and stored.line_count==4,'highlight line count changed and saved')
-items[2].sub_item_table[2].callback()  -- window
+mode_choices[2].callback()  -- window
 check(instance.style=='mask' and instance.spotlight_layout=='window','spotlight window selected')
 local bb={paints=0, paintRect=function(self,_,_,w,h,color) self.paints=self.paints+1; assert(color=='BLACK') end}
 instance:paintTo(bb,0,0)
 check(bb.paints>=1,'blackout drawn')
 check(instance.spotlight_mask_color=='black','old settings default to black')
-items[5].sub_item_table[2].sub_item_table[2].callback()
+spotlight_settings[3].sub_item_table[2].callback()
 check(instance.spotlight_mask_color=='white' and stored.spotlight_mask_color=='white','white mask preference saved')
 local white_bb={paints=0,paintRect=function(self,_,_,w,h,color) self.paints=self.paints+1; assert(color=='WHITE') end}
 instance:paintTo(white_bb,0,0)
 check(white_bb.paints>0,'white mask painted')
-items[5].sub_item_table[2].sub_item_table[1].callback()
+spotlight_settings[3].sub_item_table[1].callback()
 check(instance.spotlight_mask_color=='black','black can be restored')
-items[2].sub_item_table[3].callback() -- guide
+mode_choices[3].callback() -- guide
 check(instance.style=='mask' and instance.spotlight_layout=='guide','spotlight guide selected')
-items[5].sub_item_table[1].sub_item_table[3].callback()
+spotlight_settings[1].sub_item_table[3].callback()
 check(instance.legacy_line_count==3 and stored.legacy_line_count==3,'independent spotlight lines saved')
-items[2].sub_item_table[1].callback()
+mode_choices[1].callback()
 check(instance.style=='color','switch back to highlight focus')
 check(instance.opacity==56,'opacity unchanged after style changes')
 instance:stop()
 check(not instance.enabled and roll.onGotoViewRel==original,'stop restores clicker hook')
 -- Word focus must not start without native word geometry.
-items[3].sub_item_table[4].callback()
+highlight_settings[5].callback()
 check(instance.word_mode and stored.word_mode,'word mode persists')
 local mgr = require('ui/uimanager')
 local original_show_word = mgr.show
@@ -214,7 +254,7 @@ mgr.show = function() word_messages = word_messages + 1 end
 instance:start()
 check(not instance.enabled and word_messages == 1,'missing word geometry fails safely')
 mgr.show = original_show_word
-items[3].sub_item_table[4].callback()
+highlight_settings[5].callback()
 check(not instance.word_mode,'word mode can be disabled')
 check(saved.opacity==nil and saved.intensity==nil and saved.color_refresh_mode==nil and saved.refresh_mode==nil, 'retired settings never rewritten')
 check(dirty[#dirty].mode=='ui','nonflashing ui refresh mode preserved')
@@ -299,7 +339,8 @@ local function eachLeaf(list)
     end
 end
 check(not instance.enabled, 'menu test starts stopped')
-eachLeaf(items)
+eachLeaf(mode_choices)
+eachLeaf(settings_folders)
 if instance.enabled then instance:stop() end
 check(roll.onGotoViewRel == original, 'menu sweep restores page controls')
 
@@ -308,7 +349,7 @@ ui.menu.onTapCloseMenu = function() reader_closed = reader_closed + 1 end
 local native_close_count = 0
 local touch = {closeMenu=function() native_close_count = native_close_count + 1 end}
 -- Choosing a color must leave the full settings stack open.
-items[3].sub_item_table[1].sub_item_table[1].callback(touch)
+highlight_settings[1].sub_item_table[1].callback(touch)
 check(reader_closed == 0 and native_close_count == 0,
     'color change keeps ReaderMenu open')
 -- The native menu closure occurs after callback, before the next UI tick.
