@@ -44,6 +44,15 @@ ok(#starts==2 and starts[1]==1 and starts[2]==8,
 local first,last=L.paragraphRange(long_lines,starts,4)
 ok(first==1 and last==7,'current paragraph range from any member line')
 ok(L.slotRange(long_lines,first,last).h>200,'full paragraph visible window')
+-- Keep the first-line text box completely visible while closing the 2px
+-- clear strip above it in paragraph Spotlight Reading Window.
+local normal_para = L.slotRange(long_lines,1,7)
+local clean_para = L.slotRange(long_lines,1,7,0)
+ok(normal_para.y == long_lines[1].y-2, 'default paragraph padding retained')
+ok(clean_para.y == long_lines[1].y and clean_para.h == normal_para.h-2,
+    'clean top boundary removes padding without covering first-line text')
+ok(clean_para.y + clean_para.h == normal_para.y + normal_para.h,
+    'descender protection below the last line remains unchanged')
 ok(select(1,L.paragraphAdvance(starts,1,1))==8,
     'next advances to next paragraph')
 ok(select(1,L.paragraphAdvance(starts,8,-1))==1,
