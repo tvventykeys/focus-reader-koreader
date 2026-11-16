@@ -1,5 +1,10 @@
 ﻿# Changelog
 
+## v1.2.3-beta.3 - Freeform window overlap (2026-11-16)
+
+- Add adjustable Freeform Focus window overlap (0%, 10%, 20%, 25%, 30%, 40%, 50%) without OCR.
+- Preserve 0% as the default, with reverse and page-end geometry coverage.
+- Physical e-ink/Kobo verification is pending.
 ## v1.2.3-beta.2 - Freeform window overlap (2026-11-16)
 
 - Add adjustable Freeform Focus window overlap (0%, 10%, 20%, 25%, 30%, 40%, 50%) without OCR.
@@ -66,4 +71,5 @@ First public release candidate based on the privately tested v0.6.5 build.
 - Known limitation: some e-ink panels briefly darken during colored highlight changes; no verified hardware fix.
 
 Hardware verification of this exact public ZIP is pending. Do not describe it as tested on other KOReader devices.
+
 
