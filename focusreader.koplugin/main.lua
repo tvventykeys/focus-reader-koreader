@@ -1387,10 +1387,12 @@ function FocusReader:addToMainMenu(menu_items)
                 text_func = function()
                     return self.enabled and _("Stop Focus Reader") or _("Start Focus Reader")
                 end,
-                keep_menu_open = true,
-                callback = function(menu)
-                    self:closeSettingsMenu(menu)
-                    self:onFocusReaderToggle()
+                -- Let KOReader's TouchMenu close itself after this callback.
+                -- Defer the focus redraw until the menu has disappeared.
+                callback = function()
+                    UIManager:nextTick(function()
+                        self:onFocusReaderToggle()
+                    end)
                 end,
             },
             {
