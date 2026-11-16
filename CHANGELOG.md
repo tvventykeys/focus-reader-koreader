@@ -1,3 +1,11 @@
+## v1.2.1-beta.5 — experimental paragraph-window edge cleanup (2026-11-15)
+
+- In Spotlight Focus **Reading Window** with **whole-paragraph** stepping, eliminate the unnecessary 2-pixel clear strip above the first paragraph line without masking any of the reported text bounds.
+- Recompose the full KOReader document viewport on paragraph-window steps using the nonflashing `ui` redraw path to test a possible fix for small residual descender fragments.
+- Keep Reading Guide, Highlight Focus, Freeform Focus, line/group stepping, and other existing refresh paths unchanged.
+- Add mocked regression tests for the tightened top edge, preserved descender room below the final line, forward/reverse navigation, and whole-viewport UI redraw.
+- **Experimental:** Physical Kindle/Kobo confirmation is required; the reported artifacts may have another cause.
+
 ## v1.2.1-beta.4 — development preview (2026-11-15)
 
 - Settings selections stay open while users change colors, focus sizes, stepping, and masks; Start/Stop still returns to reading.

@@ -57,6 +57,12 @@ Expected path (Kobo): `.adds/koreader/plugins/focusreader.koplugin/main.lua`
 
 Use the same buttons or clicker inputs that already turn pages in KOReader. A click normally moves by one visual line; the chosen advancement mode is stored across sessions. Stop Focus Reader to restore normal page turning.
 
+## What's new in v1.2.1 Beta 5 (experimental)
+
+- Tests a small Reading Window paragraph-mode cleanup for stray fragments above the next paragraph: remove only two pixels of top padding and recompose the full reader viewport on paragraph steps.
+- Existing highlighting, reading guide, freeform, other stepping modes and device refresh preferences are unchanged.
+- Please compare Beta 4 and Beta 5 on the same EPUB and report whether faint descender marks disappear. This is a rendering experiment, not a proven device fix.
+
 ## What's new in v1.2.1 Beta 4
 
 - Focus Reader setting choices stay open so you can make several adjustments without reopening the menu; Start/Stop still returns to the book.
