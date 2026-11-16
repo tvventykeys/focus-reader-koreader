@@ -11,11 +11,13 @@ PLUGIN = ROOT / "focusreader.koplugin"
 DIST = ROOT / "dist" / "release"
 DIST.mkdir(parents=True, exist_ok=True)
 
-# A tagged release always uses its tag. Development runs use VERSION.
+# Never silently substitute a pushed tag for a different source VERSION.
+version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 tag = os.environ.get("GITHUB_REF_NAME") if os.environ.get("GITHUB_REF_TYPE") == "tag" else None
-version = (tag or (ROOT / "VERSION").read_text(encoding="utf-8").strip())
 if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?", version):
     raise ValueError(f"Invalid Focus Reader version: {version!r}")
+if tag is not None and tag != version:
+    raise ValueError(f"Release tag {tag!r} does not match source VERSION {version!r}")
 
 output = DIST / f"Focus-Reader-{version}-koplugin.zip"
 # Only publish the current build in Actions. Old checked-in dist/*.zip
