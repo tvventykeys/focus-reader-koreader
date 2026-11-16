@@ -49,6 +49,13 @@ package.preload['luasettings']=function()
       flush=function() end
    } end}
 end
+local registered_actions = {}
+package.preload['dispatcher']=function() return {
+    registerAction=function(_,name,action)
+        if registered_actions[name] then error('duplicate dispatcher action: '..name) end
+        registered_actions[name] = action
+    end,
+} end
 local dirty = {}
 package.preload['ui/uimanager']=function() return {
    setDirty=function(_,widget, mode, region) dirty[#dirty+1]={widget=widget,mode=mode,region=region} end,
@@ -85,6 +92,13 @@ roll.onGotoViewRel=original
 local ui={document=doc,rolling=roll,highlight={setSelectionColor=function() log[#log+1]={kind='restore'} end},menu={registerToMainMenu=function(_,plugin) menu_items={}; plugin:addToMainMenu(menu_items) end}}
 local instance=setmetatable({ui=ui,view=view},{__index=P})
 instance:init()
+local focus_action = registered_actions.focusreader_toggle
+check(focus_action and focus_action.category=='none'
+    and focus_action.event=='FocusReaderToggle'
+    and focus_action.title=='Toggle Focus Reader'
+    and focus_action.reader==true,
+    'reader-only gesture action registered on initialization')
+check(not instance.enabled, 'dispatcher registration does not auto-start')
 check(instance.opacity==56, 'default opacity overrides saved old opacity')
 check(instance.refresh_mode=='focused','focused refresh overrides saved screen refresh')
 check(instance.color_refresh_mode==nil,'experimental color refresh ignored')
@@ -133,6 +147,12 @@ check(items[3].sub_item_table[4].text=='Word-by-word (no speech)','word focus to
 check(#items[5].sub_item_table[1].sub_item_table==5,'spotlight lines 1-5 available')
 check(#items[5].sub_item_table[2].sub_item_table==5,
     'black, white, custom image, current cover and chooser available')
+instance:onFocusReaderToggle()
+check(instance.enabled and roll.onGotoViewRel~=original,
+    'gesture toggle starts focus and installs page-control hook')
+instance:onFocusReaderToggle()
+check(not instance.enabled and roll.onGotoViewRel==original,
+    'gesture toggle stops focus and restores page controls')
 instance:start()
 check(instance.enabled and roll.onGotoViewRel~=original,'start installs clicker hook')
 local selected=false
