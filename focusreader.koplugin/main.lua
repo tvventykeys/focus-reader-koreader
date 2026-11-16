@@ -1336,16 +1336,15 @@ function FocusReader:closeSettingsMenu(menu)
 end
 
 function FocusReader:addToMainMenu(menu_items)
-    -- Keep the top-level menu focused on reading, not refresh internals.
+    -- Keep the first screen simple. Each mode exposes only its own settings,
+    -- so shared text navigation never appears as an irrelevant Freeform option.
     local color_line_items, spotlight_line_items, freeform_height_items = {}, {}, {}
-    for choice_index, percent in ipairs({10, 15, 20, 25, 30, 40, 50, 75}) do
+    for _, percent in ipairs({10, 15, 20, 25, 30, 40, 50, 75}) do
         local size = percent
         freeform_height_items[#freeform_height_items + 1] = {
             text = tostring(size) .. _("% of page height"),
             checked_func = function() return self.freeform_height == size end,
-            callback = function(menu)
-                self:setFreeformHeight(size)
-            end,
+            callback = function() self:setFreeformHeight(size) end,
         }
     end
     for n = 1, 5 do
@@ -1354,21 +1353,17 @@ function FocusReader:addToMainMenu(menu_items)
         color_line_items[#color_line_items + 1] = {
             text = label,
             checked_func = function() return self.line_count == count end,
-            callback = function(menu)
-                self:setLines(count)
-            end,
+            callback = function() self:setLines(count) end,
         }
         spotlight_line_items[#spotlight_line_items + 1] = {
             text = label,
             checked_func = function() return self.legacy_line_count == count end,
-            callback = function(menu)
-                self:setLegacyLines(count)
-            end,
+            callback = function() self:setLegacyLines(count) end,
         }
     end
 
     local color_items = {}
-    for color_index, color_entry in ipairs({
+    for _, color_entry in ipairs({
         {"Yellow", "yellow"}, {"Orange", "orange"},
         {"Green", "green"}, {"Cyan", "cyan"},
         {"Blue", "blue"}, {"Pink", "pink"},
@@ -1377,10 +1372,106 @@ function FocusReader:addToMainMenu(menu_items)
         color_items[#color_items + 1] = {
             text = _(label),
             checked_func = function() return self.color_name == value end,
-            callback = function(menu)
-                self:setColor(value)
-            end,
+            callback = function() self:setColor(value) end,
         }
+    end
+
+    -- This is a shared setting for text-aware Highlight and Spotlight modes;
+    -- it does not control Freeform's fixed-height window navigation.
+    local advance_items = {
+        { text = _("One line"),
+          checked_func = function() return self.step_mode == "line" end,
+          callback = function() self:setStepMode("line") end },
+        { text = _("Whole focused group"),
+          checked_func = function() return self.step_mode == "block" end,
+          callback = function() self:setStepMode("block") end },
+        { text = _("Whole paragraph"),
+          checked_func = function() return self.step_mode == "paragraph" end,
+          callback = function() self:setStepMode("paragraph") end },
+    }
+    local advance_menu = { text = _("Advance by"), sub_item_table = advance_items }
+
+    local mask_items = {
+        { text = _("Black (default)"),
+          checked_func = function() return self.spotlight_mask_color == "black" end,
+          callback = function() self:setSpotlightMaskColor("black") end },
+        { text = _("White"),
+          checked_func = function() return self.spotlight_mask_color == "white" end,
+          callback = function() self:setSpotlightMaskColor("white") end },
+        { text = _("Custom image (from screensavers)"),
+          checked_func = function() return self.spotlight_mask_color == "image" end,
+          callback = function()
+              if self.spotlight_image_path then
+                  self:setSpotlightMaskColor("image")
+              else
+                  self:chooseSpotlightImage()
+              end
+          end },
+        { text = _("Current book cover (when available)"),
+          checked_func = function() return self.spotlight_mask_color == "cover" end,
+          callback = function() self:setSpotlightMaskColor("cover") end },
+        { text = _("Choose custom image..."),
+          keep_menu_open = true,
+          callback = function() self:chooseSpotlightImage() end },
+    }
+    local image_background_items = {
+        { text = _("Black (default)"),
+          checked_func = function() return self.spotlight_image_base_color == "black" end,
+          callback = function() self:setSpotlightImageBaseColor("black") end },
+        { text = _("White"),
+          checked_func = function() return self.spotlight_image_base_color == "white" end,
+          callback = function() self:setSpotlightImageBaseColor("white") end },
+    }
+
+    local highlight_settings = {
+        { text = _("Color"), sub_item_table = color_items },
+        { text = _("Focused lines"), sub_item_table = color_line_items },
+        advance_menu,
+        { text = _("Highlight style (EPUB / PDF)"), sub_item_table = {
+            { text = _("Native EPUB highlight / PDF light tint"),
+              checked_func = function() return self.pdf_highlight_style == "tint" end,
+              callback = function() self:setPDFHighlightStyle("tint") end },
+            { text = _("Underline only (EPUB / PDF)"),
+              checked_func = function() return self.pdf_highlight_style == "underline" end,
+              callback = function() self:setPDFHighlightStyle("underline") end },
+        } },
+        { text = _("Word-by-word (no speech)"),
+          checked_func = function() return self.word_mode end,
+          callback = function() self:setWordMode(not self.word_mode) end },
+        { text = _("Advanced"), sub_item_table = {
+            { text = _("Word navigation diagnostic"),
+              callback = function(menu)
+                  self:closeSettingsMenu(menu)
+                  self:showWordDiagnostics()
+              end },
+        } },
+    }
+
+    local function selectedSettings()
+        if self.style == "color" then return highlight_settings end
+
+        local settings
+        if self.style == "freeform" then
+            settings = {
+                { text = _("Window height"), sub_item_table = freeform_height_items },
+                { text = _("Mask background"), sub_item_table = mask_items },
+            }
+        else
+            settings = {
+                { text = _("Focused lines"), sub_item_table = spotlight_line_items },
+                advance_menu,
+                { text = _("Mask background"), sub_item_table = mask_items },
+            }
+        end
+        -- These controls only affect transparent custom images or book covers.
+        if self.spotlight_mask_color == "image"
+                or self.spotlight_mask_color == "cover" then
+            settings[#settings + 1] = {
+                text = _("Image background color"),
+                sub_item_table = image_background_items,
+            }
+        end
+        return settings
     end
 
     menu_items.focusreader = {
@@ -1389,168 +1480,50 @@ function FocusReader:addToMainMenu(menu_items)
         sub_item_table = {
             {
                 text_func = function()
-                    return self.enabled and _("Stop Focus Reader") or _("Start Focus Reader")
+                    return self.enabled and _("Stop Focus Reader")
+                        or _("Start Focus Reader")
                 end,
-                -- Let KOReader's TouchMenu close itself after this callback.
-                -- Defer the focus redraw until the menu has disappeared.
+                -- Wait until KOReader has dismissed the menu before repainting.
                 callback = function()
-                    UIManager:nextTick(function()
-                        self:onFocusReaderToggle()
-                    end)
+                    UIManager:nextTick(function() self:onFocusReaderToggle() end)
                 end,
             },
             {
-                text = _("Reading mode"),
+                text = _("Focus mode"),
                 sub_item_table = {
-                    {
-                        text = _("Highlight Focus"),
-                        checked_func = function() return self.style == "color" end,
-                        callback = function(menu)
-                            self:setStyle("color")
-                        end,
-                    },
-                    {
-                        text = _("Spotlight Focus: Reading Window"),
-                        checked_func = function()
-                            return self.style == "mask" and self.spotlight_layout == "window"
-                        end,
-                        callback = function(menu)
-                            self:setSpotlightLayout("window")
-                            self:setStyle("mask")
-                        end,
-                    },
-                    {
-                        text = _("Spotlight Focus: Reading Guide"),
-                        checked_func = function()
-                            return self.style == "mask" and self.spotlight_layout == "guide"
-                        end,
-                        callback = function(menu)
-                            self:setSpotlightLayout("guide")
-                            self:setStyle("mask")
-                        end,
-                    },
-                    {
-                        text = _("Freeform Focus (no text needed)"),
-                        checked_func = function() return self.style == "freeform" end,
-                        callback = function(menu)
-                            self:setStyle("freeform")
-                        end,
-                    },
-                },
-            },
-            {
-                text = _("Highlight Focus"),
-                sub_item_table = {
-                    { text = _("Color"), sub_item_table = color_items },
-                    { text = _("Focused lines"), sub_item_table = color_line_items },
-                    { text = _("Highlight style (EPUB / PDF)"), sub_item_table = {
-                        { text = _("Native EPUB highlight / PDF light tint"),
-                          checked_func = function() return self.pdf_highlight_style == "tint" end,
-                          callback = function(menu)
-                              self:setPDFHighlightStyle("tint")
-                          end },
-                        { text = _("Underline only (EPUB / PDF)"),
-                          checked_func = function() return self.pdf_highlight_style == "underline" end,
-                          callback = function(menu)
-                              self:setPDFHighlightStyle("underline")
-                          end },
-                    } },
-                    { text = _("Word-by-word (no speech)"),
-                      checked_func = function() return self.word_mode end,
-                      callback = function(menu)
-                          self:setWordMode(not self.word_mode)
+                    { text = _("Highlight Focus"),
+                      checked_func = function() return self.style == "color" end,
+                      callback = function() self:setStyle("color") end },
+                    { text = _("Spotlight Focus: Reading Window"),
+                      checked_func = function()
+                          return self.style == "mask"
+                              and self.spotlight_layout == "window"
+                      end,
+                      callback = function()
+                          self:setSpotlightLayout("window")
+                          self:setStyle("mask")
                       end },
-                    { text = _("Word navigation diagnostic"),
-                      callback = function(menu)
-                          self:closeSettingsMenu(menu)
-                          self:showWordDiagnostics()
+                    { text = _("Spotlight Focus: Reading Guide"),
+                      checked_func = function()
+                          return self.style == "mask"
+                              and self.spotlight_layout == "guide"
+                      end,
+                      callback = function()
+                          self:setSpotlightLayout("guide")
+                          self:setStyle("mask")
                       end },
+                    { text = _("Freeform Focus (no text needed)"),
+                      checked_func = function() return self.style == "freeform" end,
+                      callback = function() self:setStyle("freeform") end },
                 },
             },
             {
-                text = _("Advance by"),
-                sub_item_table = {
-                    {
-                        text = _("One line"),
-                        checked_func = function() return self.step_mode == "line" end,
-                        callback = function(menu)
-                            self:setStepMode("line")
-                        end,
-                    },
-                    {
-                        text = _("Whole focused group"),
-                        checked_func = function() return self.step_mode == "block" end,
-                        callback = function(menu)
-                            self:setStepMode("block")
-                        end,
-                    },
-                    {
-                        text = _("Whole paragraph"),
-                        checked_func = function() return self.step_mode == "paragraph" end,
-                        callback = function(menu)
-                            self:setStepMode("paragraph")
-                        end,
-                    },
-                },
-            },
-            {
-                text = _("Spotlight Focus"),
-                sub_item_table = {
-                    { text = _("Focused lines"), sub_item_table = spotlight_line_items },
-                    { text = _("Mask color"), sub_item_table = {
-                        { text = _("Black (default)"),
-                          checked_func = function() return self.spotlight_mask_color == "black" end,
-                          callback = function(menu)
-                              self:setSpotlightMaskColor("black")
-                          end },
-                        { text = _("White"),
-                          checked_func = function() return self.spotlight_mask_color == "white" end,
-                          callback = function(menu)
-                              self:setSpotlightMaskColor("white")
-                          end },
-                        { text = _("Custom image (from screensavers)"),
-                          checked_func = function() return self.spotlight_mask_color == "image" end,
-                          callback = function(menu)
-                              if self.spotlight_image_path then
-                                  self:setSpotlightMaskColor("image")
-                              else
-                                  self:chooseSpotlightImage()
-                              end
-                          end },
-                        { text = _("Current book cover (when available)"),
-                          checked_func = function() return self.spotlight_mask_color == "cover" end,
-                          callback = function()
-                              self:setSpotlightMaskColor("cover")
-                          end },
-                        { text = _("Choose custom image..."),
-                          keep_menu_open = true,
-                          callback = function(menu)
-                              self:chooseSpotlightImage()
-                          end },
-                    } },
-                    { text = _("Image background color"), sub_item_table = {
-                        { text = _("Black (default)"),
-                          checked_func = function()
-                              return self.spotlight_image_base_color == "black"
-                          end,
-                          callback = function(menu)
-                              self:setSpotlightImageBaseColor("black")
-                          end },
-                        { text = _("White"),
-                          checked_func = function()
-                              return self.spotlight_image_base_color == "white"
-                          end,
-                          callback = function(menu)
-                              self:setSpotlightImageBaseColor("white")
-                          end },
-                    } },
-                },
-            },
-            {
-                text = _("Freeform Focus"),
-                sub_item_table = {
-                    { text = _("Window height"), sub_item_table = freeform_height_items },
-                },
+                text_func = function()
+                    if self.style == "freeform" then return _("Freeform settings") end
+                    if self.style == "mask" then return _("Spotlight settings") end
+                    return _("Highlight settings")
+                end,
+                sub_item_table_func = selectedSettings,
             },
         },
     }
