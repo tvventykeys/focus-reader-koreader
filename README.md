@@ -15,7 +15,7 @@ Focus Reader is a free, offline KOReader plugin that moves a reading highlight o
 - **Highlight Focus** — Gently highlights 1–5 lines using yellow, orange, green, cyan, blue, or pink. Choose a tinted highlight or underline-only presentation where supported.
 - **Spotlight: Reading Window** — Keeps your current lines visible while masking text above and below. Masks can be black, white, a custom image, or your current book cover when available.
 - **Spotlight: Reading Guide** — Leaves what you've already read visible and masks the text below, like moving a reading guide down the page.
-- **Freeform Focus** — A movable clear window for scanned/image-only PDFs or pages without selectable text. Choose a window height from 10% to 75% of the visible reader area; no OCR required.
+- **Freeform Focus** — A movable clear window for scanned/image-only PDFs or pages without selectable text. Choose a window height from 10% to 75% of the visible reader area, plus **Window overlap** (0–50%) to keep a portion of the previous window visible on every step; no OCR required. Existing installs default to 0% overlap.
 
 For text-based books, **Advance by** lets you move one line, one focused group, or one **whole visible paragraph** at a time. EPUB paragraph boundaries are usually more reliable than PDF boundaries, which may be estimated from the page layout. Word-by-word navigation is also available in supported text-based modes, without speech.
 
