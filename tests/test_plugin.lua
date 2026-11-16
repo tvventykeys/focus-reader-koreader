@@ -49,10 +49,27 @@ package.preload['luasettings']=function()
       flush=function() end
    } end}
 end
+local registered_actions = {}
+package.preload['dispatcher']=function() return {
+    registerAction=function(_,name,action)
+        -- KOReader's dispatcher is idempotent: a second document instance
+        -- registers the same named action without adding it again.
+        if not registered_actions[name] then registered_actions[name] = action end
+        return true
+    end,
+} end
 local dirty = {}
+local next_ticks = {}
+local function flushNextTicks()
+    while #next_ticks > 0 do
+        local cb = table.remove(next_ticks, 1)
+        cb()
+    end
+end
 package.preload['ui/uimanager']=function() return {
    setDirty=function(_,widget, mode, region) dirty[#dirty+1]={widget=widget,mode=mode,region=region} end,
    show=function(_,msg) error('unexpected InfoMessage') end,
+   nextTick=function(_,cb) next_ticks[#next_ticks+1] = cb end,
 } end
 package.preload['ui/widget/widget']=function()
    local Widget={}
@@ -85,6 +102,13 @@ roll.onGotoViewRel=original
 local ui={document=doc,rolling=roll,highlight={setSelectionColor=function() log[#log+1]={kind='restore'} end},menu={registerToMainMenu=function(_,plugin) menu_items={}; plugin:addToMainMenu(menu_items) end}}
 local instance=setmetatable({ui=ui,view=view},{__index=P})
 instance:init()
+local focus_action = registered_actions.focusreader_toggle
+check(focus_action and focus_action.category=='none'
+    and focus_action.event=='FocusReaderToggle'
+    and focus_action.title=='Toggle Focus Reader'
+    and focus_action.reader==true,
+    'reader-only gesture action registered on initialization')
+check(not instance.enabled, 'dispatcher registration does not auto-start')
 check(instance.opacity==56, 'default opacity overrides saved old opacity')
 check(instance.refresh_mode=='focused','focused refresh overrides saved screen refresh')
 check(instance.color_refresh_mode==nil,'experimental color refresh ignored')
@@ -133,6 +157,12 @@ check(items[3].sub_item_table[4].text=='Word-by-word (no speech)','word focus to
 check(#items[5].sub_item_table[1].sub_item_table==5,'spotlight lines 1-5 available')
 check(#items[5].sub_item_table[2].sub_item_table==5,
     'black, white, custom image, current cover and chooser available')
+instance:onFocusReaderToggle()
+check(instance.enabled and roll.onGotoViewRel~=original,
+    'gesture toggle starts focus and installs page-control hook')
+instance:onFocusReaderToggle()
+check(not instance.enabled and roll.onGotoViewRel==original,
+    'gesture toggle stops focus and restores page controls')
 instance:start()
 check(instance.enabled and roll.onGotoViewRel~=original,'start installs clicker hook')
 local selected=false
@@ -220,7 +250,15 @@ local function driveMenu(item)
         trace[#trace + 1] = 'paint'
         original_setDirty(self, widget, mode, region)
     end
+    local was_enabled = instance.enabled
     item.callback(fake)
+    local is_start_stop = item.text == nil and item.text_func ~= nil
+    if is_start_stop then
+        check(instance.enabled == was_enabled and #next_ticks == 1,
+            'Start/Stop waits for TouchMenu to dismiss before starting')
+    end
+    -- Mirrors KOReader TouchMenu:onMenuSelect: close automatically for an
+    -- unchecked leaf item unless keep_menu_open is set.
     if item.checked or item.checked_func then
         if not (item.check_callback_updates_menu or item.check_callback_closes_menu) then
             fake:updateItems()
@@ -228,10 +266,14 @@ local function driveMenu(item)
     elseif not item.keep_menu_open then
         fake:closeMenu()
     end
+    flushNextTicks()
     require('ui/uimanager').setDirty = original_setDirty
-    local is_start_stop = item.text == nil and item.text_func ~= nil
     if is_start_stop then
-        check(trace[1] == 'close', 'Start/Stop returns directly to the book')
+        check(trace[1] == 'close' and instance.enabled ~= was_enabled,
+            'Start/Stop toggles after native menu close')
+        local first_paint = table.concat(trace, ','):find('paint')
+        check(not first_paint or first_paint > #'close',
+            'Start/Stop never repaints before native menu close')
     else
         check(not table.concat(trace, ','):find('close'),
             'adjusting a setting never closes the configuration')
@@ -263,14 +305,32 @@ check(roll.onGotoViewRel == original, 'menu sweep restores page controls')
 
 local reader_closed = 0
 ui.menu.onTapCloseMenu = function() reader_closed = reader_closed + 1 end
-local touch = {closeMenu=function() error('TouchMenu fallback should not run') end}
+local native_close_count = 0
+local touch = {closeMenu=function() native_close_count = native_close_count + 1 end}
 -- Choosing a color must leave the full settings stack open.
 items[3].sub_item_table[1].sub_item_table[1].callback(touch)
-check(reader_closed == 0, 'color change keeps ReaderMenu open')
--- Start/Stop is an intentional exception: return to the book to read.
+check(reader_closed == 0 and native_close_count == 0,
+    'color change keeps ReaderMenu open')
+-- The native menu closure occurs after callback, before the next UI tick.
 items[1].callback(touch)
-check(reader_closed == 1, 'Start/Stop closes ReaderMenu once')
-if instance.enabled then instance:stop() end
+check(not instance.enabled and #next_ticks == 1,
+    'Start defers activation until native TouchMenu has closed')
+check(items[1].keep_menu_open ~= true, 'Start/Stop allows automatic menu close')
+if not items[1].keep_menu_open then touch:closeMenu() end
+check(native_close_count == 1 and reader_closed == 0,
+    'KOReader TouchMenu performs closure without a second X tap')
+flushNextTicks()
+check(instance.enabled and roll.onGotoViewRel ~= original,
+    'Start activates immediately after dismissal and hooks page navigation')
+-- The same menu action also stops focus without leaving the menu visible.
+items[1].callback(touch)
+check(instance.enabled and #next_ticks == 1,
+    'Stop defers deactivation until after native menu dismissal')
+if not items[1].keep_menu_open then touch:closeMenu() end
+flushNextTicks()
+check(native_close_count == 2 and not instance.enabled
+    and roll.onGotoViewRel == original,
+    'Stop also closes menu and restores page turning')
 ui.menu.onTapCloseMenu = nil
 
 -- Word navigation must skip whitespace and standalone punctuation, including

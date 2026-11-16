@@ -3,6 +3,7 @@
 -- for Reading Window / Reading Guide. No network, audio, or annotations.
 local Blitbuffer = require("ffi/blitbuffer")
 local DataStorage = require("datastorage")
+local Dispatcher = require("dispatcher")
 local Device = require("device")
 local Geom = require("ui/geometry")
 local LuaSettings = require("luasettings")
@@ -81,6 +82,27 @@ function FocusReader:init()
     self.lines, self.areas, self.paragraph_starts = {}, {}, {}
     self._native_bounds = nil
     -- Deliberately do not auto-start a previous session.
+    self:onDispatcherRegisterActions()
+end
+
+-- One reader-only action for KOReader gestures, Profiles, Quick Menus and
+-- compatible shortcut bars. It reuses Start/Stop cleanup and never autostarts.
+function FocusReader:onDispatcherRegisterActions()
+    Dispatcher:registerAction("focusreader_toggle", {
+        category = "none",
+        event = "FocusReaderToggle",
+        title = _("Toggle Focus Reader"),
+        reader = true,
+    })
+end
+
+function FocusReader:onFocusReaderToggle()
+    if self.enabled then
+        self:stop()
+    else
+        self:start()
+    end
+    return true
 end
 
 function FocusReader:supportDiagnostics()
@@ -1365,10 +1387,12 @@ function FocusReader:addToMainMenu(menu_items)
                 text_func = function()
                     return self.enabled and _("Stop Focus Reader") or _("Start Focus Reader")
                 end,
-                keep_menu_open = true,
-                callback = function(menu)
-                    self:closeSettingsMenu(menu)
-                    if self.enabled then self:stop() else self:start() end
+                -- Let KOReader's TouchMenu close itself after this callback.
+                -- Defer the focus redraw until the menu has disappeared.
+                callback = function()
+                    UIManager:nextTick(function()
+                        self:onFocusReaderToggle()
+                    end)
                 end,
             },
             {
