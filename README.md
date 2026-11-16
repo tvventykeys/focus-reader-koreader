@@ -57,6 +57,12 @@ Expected path (Kobo): `.adds/koreader/plugins/focusreader.koplugin/main.lua`
 
 Use the same buttons or clicker inputs that already turn pages in KOReader. A click normally moves by one visual line; the chosen advancement mode is stored across sessions. Stop Focus Reader to restore normal page turning.
 
+### Gesture, Profile and shortcut action
+
+With a book open, go to **Top menu → Settings (gear) → Taps and gestures → Gesture manager**. Choose a gesture, then under **Reader** assign **Toggle Focus Reader**.
+
+The same **Toggle Focus Reader** Dispatcher action can be used by KOReader Profiles, Quick Menus, and compatible ZenOS action shortcuts. Each trigger starts Focus Reader if stopped, or stops it and restores normal page controls if running. Your selected reading mode and preferences remain unchanged. This action is available only while reading a book; restarting KOReader does not automatically start Focus Reader.
+
 ## What's new in v1.2.1 Beta 4
 
 - Focus Reader setting choices stay open so you can make several adjustments without reopening the menu; Start/Stop still returns to the book.
