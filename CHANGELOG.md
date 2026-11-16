@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.3-beta.1 — simplified menu preview (2026-11-16)
+
+- Reorganize the Focus Reader main menu into just **Start / Stop Focus Reader**, **Focus mode**, and **Settings**.
+- The **Settings** submenu now contains independent folders for **Highlight Focus**, **Spotlight Focus**, and **Freeform Focus**, including when a mode is not selected.
+- Move **Advance by** under Highlight and Spotlight options; Freeform continues to use its own window-height navigation.
+- Keep image-background color inside the Spotlight/Freeform **Mask background** configuration and the word-navigation diagnostic under **Highlight → Advanced**.
+- Preserve existing preferences, highlighting, paragraph/word navigation, custom backgrounds, and Bluetooth/page-turn behavior; no intentional focus-rendering changes.
+- Lua and source/ZIP integrity tests must pass for this exact beta tag; device testing of the reorganized menus and gesture discovery is still required.
+
 ## v1.2.2 — corrected Beta 5 code integration (pending publication)
 
 - Carry forward the experimental Spotlight Reading Window paragraph-top boundary and nonflashing viewport redraw from Beta 5's original source branch while preserving newer main-branch gesture support.
