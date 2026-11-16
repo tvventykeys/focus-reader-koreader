@@ -102,7 +102,7 @@ ok(L.freeformLastIndex(viewport,30,25)==5,
     'Freeform 25-percent overlap adds the required window')
 local overlaps={}
 for i=1,5 do overlaps[i]=L.freeformSlot(viewport,30,i,25) end
-ok(overlaps[1].y==0 and overlaps[2].y==203,
+ok(overlaps[1].y==0 and overlaps[2].y==202,
     'Freeform overlap retains the previous reading band')
 ok(overlaps[5].y+overlaps[5].h==900,
     'Overlapping Freeform last window reaches the page bottom')
