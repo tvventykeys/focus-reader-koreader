@@ -820,6 +820,7 @@ check(#blackout==1 and blackout[1].y==225 and blackout[1].h==675
     and blackout[1].color=='BLACK',
     'Freeform masks below the clear first band even with zero text')
 pdfpaging:onGotoViewRel(1)
+print('DEBUG FREEFORM', 'index', tostring(pdf.freeform_index), 'y', tostring(pdf:getSlot().y), 'overlap', tostring(pdf.freeform_overlap), 'height', tostring(pdf.freeform_height), 'stride', tostring(dofile('focusreader.koplugin/logic.lua').freeformStride(pdf.freeform_area, pdf.freeform_height, pdf.freeform_overlap)))
 check(pdf.freeform_index==2 and pdf:getSlot().y==225,
     'clicker advances one geometric window')
 blackout={}
