@@ -120,69 +120,71 @@ check(instance.supported and view.focusreader==instance,'plugin loaded and regis
 check(type(menu_items.focusreader)=='table','menu registered')
 check(menu_items.focusreader.sorting_hint=='tools','Tools menu location')
 local items=menu_items.focusreader.sub_item_table
-check(#items==3,'main menu has only Start/Stop, Focus mode and current settings')
+check(#items==3,'main menu is Start/Stop, Focus mode and Settings only')
 check(items[2].text=='Focus mode' and #items[2].sub_item_table==4,
     'Focus mode contains Highlight, both Spotlight layouts and Freeform')
 local mode_choices=items[2].sub_item_table
 check(mode_choices[4].text=='Freeform Focus (no text needed)',
-    'no-text Freeform mode remains available')
-check(type(items[3].text_func)=='function'
-    and type(items[3].sub_item_table_func)=='function',
-    'current mode settings are generated dynamically')
-local current_settings=items[3]
-local highlight_settings=current_settings.sub_item_table_func()
-check(current_settings.text_func()=='Highlight settings'
-    and #highlight_settings==6,
-    'highlight settings include color, lines, advance, style, word and advanced')
-check(highlight_settings[1].text=='Color'
+    'no-text Freeform mode remains selectable')
+check(items[3].text=='Settings' and #items[3].sub_item_table==3,
+    'Settings opens all three mode folders at once')
+local settings_folders=items[3].sub_item_table
+check(settings_folders[1].text=='Highlight Focus'
+    and settings_folders[2].text=='Spotlight Focus'
+    and settings_folders[3].text=='Freeform Focus',
+    'settings folders are ordered and labeled clearly')
+local highlight_settings=settings_folders[1].sub_item_table
+local spotlight_settings=settings_folders[2].sub_item_table
+local freeform_settings=settings_folders[3].sub_item_table
+check(#highlight_settings==6 and highlight_settings[1].text=='Color'
     and highlight_settings[2].text=='Focused lines'
     and highlight_settings[3].text=='Advance by',
-    'shared text navigation is nested in Highlight settings')
+    'Highlight settings include color, focused lines and nested text navigation')
 check(#highlight_settings[1].sub_item_table==6
     and #highlight_settings[2].sub_item_table==5,
-    'six highlight colors and one to five lines remain')
-check(#highlight_settings[3].sub_item_table==3
-    and highlight_settings[3].sub_item_table[1].text=='One line'
+    'Highlight color and 1–5-line controls remain available')
+check(highlight_settings[3].sub_item_table[1].text=='One line'
     and highlight_settings[3].sub_item_table[2].text=='Whole focused group'
     and highlight_settings[3].sub_item_table[3].text=='Whole paragraph',
-    'advance settings expose all three navigation modes')
+    'shared Advance by settings keep all three options')
 check(highlight_settings[5].text=='Word-by-word (no speech)'
     and highlight_settings[6].text=='Advanced'
     and highlight_settings[6].sub_item_table[1].text=='Word navigation diagnostic',
-    'word navigation controls remain but diagnostic is tucked under Advanced')
-local initial_style=instance.style
-local initial_mask=instance.spotlight_mask_color
-instance.style='mask'
-local spotlight_settings=current_settings.sub_item_table_func()
-check(current_settings.text_func()=='Spotlight settings'
-    and #spotlight_settings==3
+    'word navigation and diagnostics are preserved')
+check(#spotlight_settings==3
     and spotlight_settings[1].text=='Focused lines'
     and spotlight_settings[2].text=='Advance by'
     and spotlight_settings[3].text=='Mask background',
-    'Spotlight settings expose only relevant text and mask controls')
+    'Spotlight settings keep focused lines, advance and mask controls')
 check(#spotlight_settings[1].sub_item_table==5
-    and #spotlight_settings[3].sub_item_table==5,
-    'Spotlight line sizes and all masks/chooser are preserved')
-instance.style='freeform'
-local freeform_settings=current_settings.sub_item_table_func()
-check(current_settings.text_func()=='Freeform settings'
-    and #freeform_settings==2
+    and #spotlight_settings[3].sub_item_table==6,
+    'Spotlight preserves 1–5 line presets, masks, image chooser and backing')
+check(#freeform_settings==2
     and freeform_settings[1].text=='Window height'
     and #freeform_settings[1].sub_item_table==8
-    and freeform_settings[2].text=='Mask background',
-    'Freeform only shows window height and applicable masking controls')
-instance.spotlight_mask_color='image'
-local image_settings=current_settings.sub_item_table_func()
-check(#image_settings==3 and image_settings[3].text=='Image background color'
-    and #image_settings[3].sub_item_table==2,
-    'image backing choices only appear when an image mask is chosen')
+    and freeform_settings[2].text=='Mask background'
+    and #freeform_settings[2].sub_item_table==6,
+    'Freeform offers only window height and shared mask options, not text Advance by')
+check(spotlight_settings[3].sub_item_table == freeform_settings[2].sub_item_table,
+    'Spotlight and Freeform share the same mask settings')
+local image_settings=spotlight_settings[3].sub_item_table[6].sub_item_table
+check(spotlight_settings[3].sub_item_table[6].text=='Image background color'
+    and #image_settings==2,
+    'transparent-image backing options are inside Mask background')
+local old_style=instance.style
+local old_mask=instance.spotlight_mask_color
 instance.style='mask'
-local spotlight_image_settings=current_settings.sub_item_table_func()
-check(#spotlight_image_settings==4
-    and spotlight_image_settings[4].text=='Image background color',
-    'Spotlight image masks also expose their backing color')
-instance.spotlight_mask_color=initial_mask
-instance.style=initial_style
+check(#settings_folders==3
+    and settings_folders[1].sub_item_table==highlight_settings
+    and settings_folders[3].sub_item_table==freeform_settings,
+    'inactive Highlight and Freeform settings stay accessible in Spotlight')
+instance.style='freeform'
+check(#settings_folders==3
+    and settings_folders[1].sub_item_table==highlight_settings
+    and settings_folders[2].sub_item_table==spotlight_settings,
+    'inactive Highlight and Spotlight settings stay accessible in Freeform')
+instance.style=old_style
+instance.spotlight_mask_color=old_mask
 local labels={}
 local function scan(a)
   for _,e in ipairs(a) do
@@ -191,13 +193,10 @@ local function scan(a)
   end
 end
 scan(items)
-scan(highlight_settings)
-scan(spotlight_settings)
-scan(freeform_settings)
 local label_text=table.concat(labels,';'):lower()
 check(not label_text:find('opacity') and not label_text:find('refresh')
     and not label_text:find('test') and not label_text:find('clicker'),
-    'technical options stay out of visible focus settings')
+    'technical options stay out of the visible settings')
 instance:onFocusReaderToggle()
 check(instance.enabled and roll.onGotoViewRel~=original,
     'gesture toggle starts focus and installs page-control hook')
@@ -341,10 +340,7 @@ local function eachLeaf(list)
 end
 check(not instance.enabled, 'menu test starts stopped')
 eachLeaf(mode_choices)
-eachLeaf(highlight_settings)
-eachLeaf(spotlight_settings)
-eachLeaf(freeform_settings)
-eachLeaf(image_settings)
+eachLeaf(settings_folders)
 if instance.enabled then instance:stop() end
 check(roll.onGotoViewRel == original, 'menu sweep restores page controls')
 
