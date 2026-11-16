@@ -41,7 +41,17 @@ With a book open, visit **Tools → Focus Reader** to select your reading mode, 
 
 **Want a one-gesture on/off switch?** In KOReader, open **Settings → Taps and gestures → Gesture manager**, choose a gesture, and assign **Reader → Toggle Focus Reader**. The same action can be used with KOReader Profiles, Quick Menus, and compatible ZenOS shortcuts. Choosing Start/Stop from the Focus Reader menu also returns you directly to your book.
 
-**Custom image backgrounds:** Place an image in KOReader's screensavers directory (on Kobo: `.adds/koreader/screensavers/`), then choose it from **Tools → Focus Reader → Spotlight Focus → Mask color**. Transparent PNGs can use a separately selected black or white backing color. You can also select the current book cover when available. This does not change your device's sleep screen.
+### Custom image backgrounds
+
+Make Spotlight Focus your own with a picture instead of a plain black or white mask. On Kobo, copy your chosen image into `.adds/koreader/screensavers/`, then open **Tools → Focus Reader → Spotlight Focus → Mask color** and select your custom image. For transparent PNGs, choose a **black or white background** behind the artwork. You can also use your **current book cover** when available.
+
+These images change only the background around the reading window or guide — **not** your Kobo's sleep screen.
+
+| Custom background — example 1 | Custom background — example 2 |
+|:---:|:---:|
+| ![Focus Reader reading window with a custom image background, example one](https://github.com/user-attachments/assets/0468ced6-1046-4081-a760-f40ad202aabe) | ![Focus Reader reading window with a custom image background, example two](https://github.com/user-attachments/assets/5bbbafb5-e91a-4bd4-bbe8-e53296e41cc8) |
+
+*Two real Kobo screenshots showing custom backgrounds in Spotlight Focus.*
 
 ## Current stable release: v1.2.2
 
