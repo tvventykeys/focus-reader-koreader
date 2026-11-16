@@ -52,8 +52,10 @@ end
 local registered_actions = {}
 package.preload['dispatcher']=function() return {
     registerAction=function(_,name,action)
-        if registered_actions[name] then error('duplicate dispatcher action: '..name) end
-        registered_actions[name] = action
+        -- KOReader's dispatcher is idempotent: a second document instance
+        -- registers the same named action without adding it again.
+        if not registered_actions[name] then registered_actions[name] = action end
+        return true
     end,
 } end
 local dirty = {}
