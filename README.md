@@ -43,13 +43,9 @@ With a book open, visit **Tools → Focus Reader** to select your reading mode, 
 
 Make Spotlight Focus your own with a picture instead of a plain black or white mask. On Kobo, copy your chosen image into `.adds/koreader/screensavers/`, then open **Tools → Focus Reader → Spotlight Focus → Mask color** and select your custom image. For transparent PNGs, choose a **black or white background** behind the artwork. You can also use your **current book cover** when available.
 
-These images change only the background around the reading window or guide — **not** your Kobo's sleep screen.
+Custom backgrounds change only the mask around your reading window or guide — **not** your Kobo's sleep screen.
 
-| Custom background — 1 | Custom background — 2 |
-|:---:|:---:|
-| <img src="https://github.com/user-attachments/assets/0468ced6-1046-4081-a760-f40ad202aabe" alt="Spotlight Focus custom image background, example one" width="220"> | <img src="https://github.com/user-attachments/assets/5bbbafb5-e91a-4bd4-bbe8-e53296e41cc8" alt="Spotlight Focus custom image background, example two" width="220"> |
-
-*Two real Kobo screenshots showing custom backgrounds in Spotlight Focus.*
+See the custom-background examples: [Example 1](https://github.com/user-attachments/assets/0468ced6-1046-4081-a760-f40ad202aabe) · [Example 2](https://github.com/user-attachments/assets/5bbbafb5-e91a-4bd4-bbe8-e53296e41cc8).
 
 ## Current stable release: v1.2.2
 
