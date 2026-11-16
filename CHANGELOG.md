@@ -1,3 +1,12 @@
+# Changelog
+
+## v1.2.2 — corrected Beta 5 code integration (pending publication)
+
+- Carry forward the experimental Spotlight Reading Window paragraph-top boundary and nonflashing viewport redraw from Beta 5's original source branch while preserving newer main-branch gesture support.
+- Add regression tests for line bounds, backward/forward paragraph navigation, and UI refresh behavior.
+- Correct release traceability: the v1.2.1 and v1.2.1-beta.5 attached ZIPs were built from Beta 4-era plugin source despite their release labels.
+- Physical Kindle/Kobo verification of the paragraph rendering experiment remains pending.
+
 ## v1.2.1-beta.4 — development preview (2026-11-15)
 
 - Settings selections stay open while users change colors, focus sizes, stepping, and masks; Start/Stop still returns to reading.
@@ -5,8 +14,6 @@
 - Expanded whole-viewport UI recomposition for white and illustrated Spotlight masks to reduce stale PaperDots regions between within-page steps. Does not force a flashing e-ink full refresh or guarantee elimination of hardware ghosting.
 - Preserves scanned-PDF Freeform navigation, line/group/paragraph modes, separate user preferences, and normal page turning when stopped.
 - Kobo/PaperDots hardware acceptance is still pending.
-
-# Changelog
 
 ## v1.2.0 — 2026-11-14
 
