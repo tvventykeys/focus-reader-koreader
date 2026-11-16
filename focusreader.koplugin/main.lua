@@ -25,6 +25,7 @@ local FocusReader = Widget:extend{
     opacity = 56,         -- Fixed original default; never read old opacity preferences.
     legacy_line_count = 3, -- Independent Spotlight Focus reading window.
     freeform_height = 25, -- Independent percent of viewport height; no OCR or text APIs.
+    freeform_overlap = 0, -- Percent of window retained between steps; legacy default.
     freeform_index = 1,
     spotlight_layout = "window", -- window (above & below) or guide (below only).
     spotlight_mask_color = "black", -- black, white, or optional custom image.
@@ -62,6 +63,10 @@ function FocusReader:init()
     self.freeform_height = ({[10]=true,[15]=true,[20]=true,[25]=true,
         [30]=true,[40]=true,[50]=true,[75]=true})[saved_freeform_height]
         and saved_freeform_height or 25
+    local saved_freeform_overlap = self.settings:readSetting("freeform_overlap")
+    self.freeform_overlap = ({[0]=true,[10]=true,[20]=true,[25]=true,
+        [30]=true,[40]=true,[50]=true})[saved_freeform_overlap]
+        and saved_freeform_overlap or 0
     self.freeform_index = 1
     self._mask_image = nil
     self._mask_image_key = nil
@@ -241,7 +246,7 @@ function FocusReader:refreshFreeform(reset_index)
     if not self.supported or not self.enabled then return false end
     self.location = self:getLocation()
     local area = self:getViewport()
-    local last = Logic.freeformLastIndex(area, self.freeform_height)
+    local last = Logic.freeformLastIndex(area, self.freeform_height, self.freeform_overlap)
     if last == 0 then return false end
     self.freeform_area = area
     self.areas = {area}
@@ -563,7 +568,7 @@ end
 function FocusReader:getSlot()
     if self.style == "freeform" then
         return Logic.freeformSlot(self.freeform_area, self.freeform_height,
-            self.freeform_index)
+            self.freeform_index, self.freeform_overlap)
     end
     if self:isParagraphFocus() then
         local first, last = self:paragraphRange()
@@ -976,7 +981,7 @@ function FocusReader:moveFocus(direction)
     if self.style == "freeform" then
         local index, page_direction = Logic.freeformAdvance(
             self.freeform_area, self.freeform_height,
-            self.freeform_index, direction)
+            self.freeform_index, direction, self.freeform_overlap)
         if page_direction then return self:turnPage(page_direction) end
         if index ~= self.freeform_index then
             local old_slot = self:getSlot()
@@ -1236,10 +1241,35 @@ function FocusReader:setFreeformHeight(percent)
             local height = Logic.freeformWindowHeight(self.freeform_area, percent)
             if height then
                 local relative_top = old_slot.y - old_slot.area.y
-                local near_index = math.floor(relative_top / height + 0.5) + 1
+                local stride = Logic.freeformStride(self.freeform_area,
+                    percent, self.freeform_overlap)
+                local near_index = math.floor(relative_top / stride + 0.5) + 1
                 self.freeform_index = math.max(1, math.min(near_index,
-                    Logic.freeformLastIndex(self.freeform_area, percent)))
+                    Logic.freeformLastIndex(self.freeform_area, percent,
+                        self.freeform_overlap)))
             end
+        end
+        self:redraw(true)
+    end
+end
+
+function FocusReader:setFreeformOverlap(percent)
+    local allowed = {[0]=true,[10]=true,[20]=true,[25]=true,
+        [30]=true,[40]=true,[50]=true}
+    if not allowed[percent] or self.freeform_overlap == percent then return end
+    local old_slot = self.enabled and self.style == "freeform" and self:getSlot() or nil
+    self.freeform_overlap = percent
+    self.settings:saveSetting("freeform_overlap", percent)
+    if self.enabled and self.style == "freeform" then
+        if not self:refreshFreeform(false) then self:stop(); return end
+        if old_slot then
+            local stride = Logic.freeformStride(self.freeform_area,
+                self.freeform_height, percent)
+            local relative_top = old_slot.y - old_slot.area.y
+            self.freeform_index = math.max(1, math.min(
+                math.floor(relative_top / stride + 0.5) + 1,
+                Logic.freeformLastIndex(self.freeform_area,
+                    self.freeform_height, percent)))
         end
         self:redraw(true)
     end
@@ -1339,6 +1369,15 @@ function FocusReader:addToMainMenu(menu_items)
     -- Keep the first screen simple. Each mode exposes only its own settings,
     -- so shared text navigation never appears as an irrelevant Freeform option.
     local color_line_items, spotlight_line_items, freeform_height_items = {}, {}, {}
+    local freeform_overlap_items = {}
+    for _, percent in ipairs({0, 10, 20, 25, 30, 40, 50}) do
+        local overlap = percent
+        freeform_overlap_items[#freeform_overlap_items + 1] = {
+            text = tostring(overlap) .. _("% of window"),
+            checked_func = function() return self.freeform_overlap == overlap end,
+            callback = function() self:setFreeformOverlap(overlap) end,
+        }
+    end
     for size_index, percent in ipairs({10, 15, 20, 25, 30, 40, 50, 75}) do
         local size = percent
         freeform_height_items[#freeform_height_items + 1] = {
@@ -1462,6 +1501,7 @@ function FocusReader:addToMainMenu(menu_items)
     }
     local freeform_settings = {
         { text = _("Window height"), sub_item_table = freeform_height_items },
+        { text = _("Window overlap"), sub_item_table = freeform_overlap_items },
         { text = _("Mask background"), sub_item_table = mask_items },
     }
     local all_settings = {
