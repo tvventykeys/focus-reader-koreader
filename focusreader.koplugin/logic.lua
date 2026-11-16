@@ -357,7 +357,7 @@ end
 
 -- Freeform Focus has no dependency on CRe/MuPDF text geometry. Only the
 -- rendered reader viewport is needed. Percentages describe the clear reading
--- window height, with one window of forward progress for each click.
+-- window height. Optional overlap retains part of the previous window.
 function Logic.freeformWindowHeight(area, percent)
     if type(area) ~= "table" or type(area.h) ~= "number"
             or type(area.w) ~= "number" or area.h <= 0 or area.w <= 0
@@ -367,25 +367,35 @@ function Logic.freeformWindowHeight(area, percent)
     return math.max(1, math.min(area.h, math.floor(area.h * percent / 100 + 0.5)))
 end
 
-function Logic.freeformLastIndex(area, percent)
-    local height = Logic.freeformWindowHeight(area, percent)
-    if not height then return 0 end
-    return math.max(1, math.ceil(area.h / height))
-end
-
-function Logic.freeformSlot(area, percent, index)
+function Logic.freeformStride(area, percent, overlap)
     local height = Logic.freeformWindowHeight(area, percent)
     if not height then return nil end
-    local last = Logic.freeformLastIndex(area, percent)
+    overlap = type(overlap) == "number" and overlap or 0
+    if overlap < 0 or overlap > 50 then overlap = 0 end
+    -- At least one pixel of progress, even on short viewports.
+    return math.max(1, height - math.floor(height * overlap / 100 + 0.5))
+end
+
+function Logic.freeformLastIndex(area, percent, overlap)
+    local height = Logic.freeformWindowHeight(area, percent)
+    if not height then return 0 end
+    local stride = Logic.freeformStride(area, percent, overlap)
+    return math.max(1, math.ceil((area.h - height) / stride) + 1)
+end
+
+function Logic.freeformSlot(area, percent, index, overlap)
+    local height = Logic.freeformWindowHeight(area, percent)
+    if not height then return nil end
+    local last = Logic.freeformLastIndex(area, percent, overlap)
     local step = clamp(index, 1, last) - 1
-    -- For the final, overlapping window, align to the bottom edge. Never
-    -- leave the last portion of the page unread or draw outside the viewport.
-    local top = math.min(area.h - height, step * height)
+    -- Clamp final window to the page bottom; no unread gap or overshoot.
+    local top = math.min(area.h - height,
+        step * Logic.freeformStride(area, percent, overlap))
     return {x=area.x, y=area.y + top, w=area.w, h=height, area=area}
 end
 
-function Logic.freeformAdvance(area, percent, index, direction)
-    local last = Logic.freeformLastIndex(area, percent)
+function Logic.freeformAdvance(area, percent, index, direction, overlap)
+    local last = Logic.freeformLastIndex(area, percent, overlap)
     if last == 0 then return nil, direction end
     index = clamp(index, 1, last)
     if direction > 0 then

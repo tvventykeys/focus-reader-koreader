@@ -159,13 +159,15 @@ check(#spotlight_settings==3
 check(#spotlight_settings[1].sub_item_table==5
     and #spotlight_settings[3].sub_item_table==6,
     'Spotlight preserves 1–5 line presets, masks, image chooser and backing')
-check(#freeform_settings==2
+check(#freeform_settings==3
     and freeform_settings[1].text=='Window height'
     and #freeform_settings[1].sub_item_table==8
-    and freeform_settings[2].text=='Mask background'
-    and #freeform_settings[2].sub_item_table==6,
-    'Freeform offers only window height and shared mask options, not text Advance by')
-check(spotlight_settings[3].sub_item_table == freeform_settings[2].sub_item_table,
+    and freeform_settings[2].text=='Window overlap'
+    and #freeform_settings[2].sub_item_table==7
+    and freeform_settings[3].text=='Mask background'
+    and #freeform_settings[3].sub_item_table==6,
+    'Freeform offers window height, overlap and shared mask, not text Advance by')
+check(spotlight_settings[3].sub_item_table == freeform_settings[3].sub_item_table,
     'Spotlight and Freeform share the same mask settings')
 local image_settings=spotlight_settings[3].sub_item_table[6].sub_item_table
 check(spotlight_settings[3].sub_item_table[6].text=='Image background color'

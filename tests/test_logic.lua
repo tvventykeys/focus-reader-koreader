@@ -97,6 +97,25 @@ for i=2,#all_slots do
     ok(all_slots[i].y <= all_slots[i-1].y+all_slots[i-1].h,
         'Freeform windows never skip any page pixels')
 end
+-- Overlap moves a shorter distance, reverses exactly, and covers the bottom.
+ok(L.freeformLastIndex(viewport,30,25)==5,
+    'Freeform 25-percent overlap adds the required window')
+local overlaps={}
+for i=1,5 do overlaps[i]=L.freeformSlot(viewport,30,i,25) end
+ok(overlaps[1].y==0 and overlaps[2].y==202,
+    'Freeform overlap retains the previous reading band')
+ok(overlaps[5].y+overlaps[5].h==900,
+    'Overlapping Freeform last window reaches the page bottom')
+for i=2,5 do
+    ok(overlaps[i].y<=overlaps[i-1].y+overlaps[i-1].h,
+        'Overlapping Freeform windows leave no gaps')
+end
+ok(select(1,L.freeformAdvance(viewport,30,2,-1,25))==1,
+    'Freeform overlap reverses one step')
+ok(select(2,L.freeformAdvance(viewport,30,5,1,25))==1,
+    'Freeform overlap turns page only after final window')
+ok(L.freeformLastIndex(viewport,30,0)==L.freeformLastIndex(viewport,30),
+    'Zero overlap preserves original navigation')
 ok(select(1,L.freeformAdvance(viewport,30,1,1))==2,
     'Freeform next click moves one window')
 ok(select(1,L.freeformAdvance(viewport,30,3,-1))==2,
