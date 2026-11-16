@@ -1339,7 +1339,7 @@ function FocusReader:addToMainMenu(menu_items)
     -- Keep the first screen simple. Each mode exposes only its own settings,
     -- so shared text navigation never appears as an irrelevant Freeform option.
     local color_line_items, spotlight_line_items, freeform_height_items = {}, {}, {}
-    for _, percent in ipairs({10, 15, 20, 25, 30, 40, 50, 75}) do
+    for size_index, percent in ipairs({10, 15, 20, 25, 30, 40, 50, 75}) do
         local size = percent
         freeform_height_items[#freeform_height_items + 1] = {
             text = tostring(size) .. _("% of page height"),
@@ -1363,7 +1363,7 @@ function FocusReader:addToMainMenu(menu_items)
     end
 
     local color_items = {}
-    for _, color_entry in ipairs({
+    for color_index, color_entry in ipairs({
         {"Yellow", "yellow"}, {"Orange", "orange"},
         {"Green", "green"}, {"Cyan", "cyan"},
         {"Blue", "blue"}, {"Pink", "pink"},
@@ -1447,32 +1447,28 @@ function FocusReader:addToMainMenu(menu_items)
         } },
     }
 
-    local function selectedSettings()
-        if self.style == "color" then return highlight_settings end
-
-        local settings
-        if self.style == "freeform" then
-            settings = {
-                { text = _("Window height"), sub_item_table = freeform_height_items },
-                { text = _("Mask background"), sub_item_table = mask_items },
-            }
-        else
-            settings = {
-                { text = _("Focused lines"), sub_item_table = spotlight_line_items },
-                advance_menu,
-                { text = _("Mask background"), sub_item_table = mask_items },
-            }
-        end
-        -- These controls only affect transparent custom images or book covers.
-        if self.spotlight_mask_color == "image"
-                or self.spotlight_mask_color == "cover" then
-            settings[#settings + 1] = {
-                text = _("Image background color"),
-                sub_item_table = image_background_items,
-            }
-        end
-        return settings
-    end
+    -- Keep all three setting folders accessible, including those for
+    -- modes that are not currently selected. These callbacks already persist
+    -- inactive-mode preferences without changing the active reading style.
+    -- The transparent-image backing color belongs under mask configuration.
+    mask_items[#mask_items + 1] = {
+        text = _("Image background color"),
+        sub_item_table = image_background_items,
+    }
+    local spotlight_settings = {
+        { text = _("Focused lines"), sub_item_table = spotlight_line_items },
+        advance_menu,
+        { text = _("Mask background"), sub_item_table = mask_items },
+    }
+    local freeform_settings = {
+        { text = _("Window height"), sub_item_table = freeform_height_items },
+        { text = _("Mask background"), sub_item_table = mask_items },
+    }
+    local all_settings = {
+        { text = _("Highlight Focus"), sub_item_table = highlight_settings },
+        { text = _("Spotlight Focus"), sub_item_table = spotlight_settings },
+        { text = _("Freeform Focus"), sub_item_table = freeform_settings },
+    }
 
     menu_items.focusreader = {
         text = _("Focus Reader"),
@@ -1518,12 +1514,8 @@ function FocusReader:addToMainMenu(menu_items)
                 },
             },
             {
-                text_func = function()
-                    if self.style == "freeform" then return _("Freeform settings") end
-                    if self.style == "mask" then return _("Spotlight settings") end
-                    return _("Highlight settings")
-                end,
-                sub_item_table_func = selectedSettings,
+                text = _("Settings"),
+                sub_item_table = all_settings,
             },
         },
     }
