@@ -1370,7 +1370,7 @@ function FocusReader:addToMainMenu(menu_items)
     -- so shared text navigation never appears as an irrelevant Freeform option.
     local color_line_items, spotlight_line_items, freeform_height_items = {}, {}, {}
     local freeform_overlap_items = {}
-    for _, percent in ipairs({0, 10, 20, 25, 30, 40, 50}) do
+    for overlap_index, percent in ipairs({0, 10, 20, 25, 30, 40, 50}) do
         local overlap = percent
         freeform_overlap_items[#freeform_overlap_items + 1] = {
             text = tostring(overlap) .. _("% of window"),

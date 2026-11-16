@@ -802,6 +802,9 @@ pdfdoc.getTextFromPositions = function()
 end
 pdf:setStyle('freeform')
 pdf:setFreeformHeight(25)
+pdf:setFreeformOverlap(0) -- Isolate legacy geometry from earlier menu tests.
+check(pdf.freeform_overlap==0 and stored.freeform_overlap==0,
+    'Freeform zero overlap is saved and retains legacy movement')
 check(pdf.freeform_height==25 and stored.freeform_height==25,
     'Freeform height setting is separate and persists')
 pdf:setSpotlightMaskColor('black')
