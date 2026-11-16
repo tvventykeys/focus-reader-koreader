@@ -1,121 +1,76 @@
 # Focus Reader for KOReader
 
-**An offline reading focus tool for people who prefer to read a few lines at a time.**
+**Read a few lines at a time. Keep your place. Make reading feel less overwhelming.**
 
-Focus Reader moves a visual focus region down or up as you press KOReader's usual page-forward/page-back controls (including compatible Bluetooth page-turn clickers). At the end of a page it turns to the next page automatically; the reverse button moves back through the lines and pages.
+Focus Reader is a free, offline KOReader plugin that moves a reading highlight or clear window through your book as you use the usual next/previous page controls — including compatible Bluetooth page-turners. Instead of losing your place on a full page, you can concentrate on the part you want to read. It advances to the next page when you reach the end.
 
-## Modes
+**Free · Open source · Offline · No tracking · No account required**
 
-- **Highlight Focus** (default): a gentle native text highlight with **Yellow, Orange, Green, Cyan, Blue, or Pink**. Choose **1–5 focused lines**. The shade has a fixed, gentle strength; no flashing/opacity controls are exposed.
-- **Spotlight Focus — Reading Window**: text above and below the focused 1–5 lines is masked **solid black by default**, with an optional white mask or custom image background.
-- **Spotlight Focus — Reading Guide**: text above the reading position stays visible; everything below is masked **solid black by default**, with an optional white mask or custom image background, like moving a sheet of paper down the page. The Spotlight line count is independent of Highlight Focus.
-- **Freeform Focus (development preview)**: a text-independent reading window for scanned/image-only PDFs and other pages where text positions are unavailable. It masks the page above and below a clear, full-width window whose height can be 10%, 15%, 20%, 25%, 30%, 40%, 50% or 75% of the visible reader viewport. Each forward/back click advances one window height. At the bottom or top it turns the real document page, and previous-page navigation starts from the bottom. It reuses the existing Spotlight black, white and custom-image mask settings.
+## See it in action
 
-### Paragraph Focus (development preview)
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/0468ced6-1046-4081-a760-f40ad202aabe" alt="Focus Reader with a custom Spotlight background, first Kobo screenshot" width="46%" />
+  <img src="https://github.com/user-attachments/assets/5bbbafb5-e91a-4bd4-bbe8-e53296e41cc8" alt="Focus Reader with an alternative Spotlight background, second Kobo screenshot" width="46%" />
+</p>
 
-Choose **Tools → Focus Reader → Advance by → Whole paragraph** to focus one visible
-paragraph at a time. Next/previous controls move between paragraphs instead of
-advancing 1–5 lines. This works in Highlight Focus, Spotlight Reading Window,
-and Spotlight Reading Guide. The active region grows to include the whole
-paragraph **visible on the current page**, even if it is longer than five lines.
-If a paragraph continues onto the next page, normal page turning reveals its
-next visible portion; it cannot be displayed across two pages simultaneously.
+*Two examples of Focus Reader's customizable Spotlight backgrounds. Both screenshots were shared with the v1.2.0 release.*
 
-For EPUB, Focus Reader uses CRengine text-position (XPointer) paragraph elements
-when available. For PDFs, which usually do not expose semantic paragraph tags,
-it estimates boundaries from spacing, indentation and short preceding lines.
-Therefore PDF paragraphs may occasionally be joined or separated incorrectly.
-Unlike Freeform Focus, paragraph mode needs extractable text. Paragraph mode and
-word-by-word mode are mutually exclusive; choosing one disables the other.
+## Choose how you want to read
 
-Focus Reader does **not** require a network connection, create annotations, read audio, or send any book text anywhere. It is independent of any narration or book-sync service.
+- **Highlight Focus** — Gently highlights 1–5 lines using yellow, orange, green, cyan, blue, or pink. Choose a tinted highlight or underline-only presentation where supported.
+- **Spotlight: Reading Window** — Keeps your current lines visible while masking text above and below. Masks can be black, white, a custom image, or your current book cover when available.
+- **Spotlight: Reading Guide** — Leaves what you've already read visible and masks the text below, like moving a reading guide down the page.
+- **Freeform Focus** — A movable clear window for scanned/image-only PDFs or pages without selectable text. Choose a window height from 10% to 75% of the visible reader area; no OCR required.
 
-## Installation
+For text-based books, **Advance by** lets you move one line, one focused group, or one **whole visible paragraph** at a time. EPUB paragraph boundaries are usually more reliable than PDF boundaries, which may be estimated from the page layout. Word-by-word navigation is also available in supported text-based modes, without speech.
 
-1. Install KOReader first. This plugin does not work in the stock Kobo reader app.
-2. Download the installable ZIP from the [latest stable release](https://github.com/tvventykeys/focusreader.koplugin/releases/latest) (not GitHub's automatically generated source ZIP).
-3. Extract it. Copy the **`focusreader.koplugin`** folder itself into KOReader's `plugins/` directory. Do not nest the directory inside another ZIP folder.
-   - **Kobo:** `.adds/koreader/plugins/` on the connected e-reader.
-   - **Other devices:** find the `plugins` directory inside your KOReader data directory; its location varies.
-4. Safely eject your device and fully restart KOReader.
-5. Open an EPUB or PDF, then go to **Tools → Focus Reader** and choose **Start Focus Reader**. For scanned/image-only PDFs, choose **Reading mode → Freeform Focus (no text needed)** before starting.
+## Install and start
 
-Expected path (Kobo): `.adds/koreader/plugins/focusreader.koplugin/main.lua`
+**From a KOReader plugin storefront:** Choose **Install** on the Focus Reader listing, then follow that storefront's instructions. If Focus Reader doesn't appear, restart KOReader.
 
-> Upgrading? Stop Focus Reader, fully exit KOReader, back up your old `focusreader.koplugin` folder, then replace **only that folder**. Settings are stored separately; they are not removed by replacing the plugin directory.
+**Manually from GitHub:**
 
-## Controls and settings
+1. Install KOReader first. Focus Reader does not run in Kobo's stock reading app.
+2. Get the installable ZIP from the [latest stable release](https://github.com/tvventykeys/focusreader.koplugin/releases/latest), **not** GitHub's automatically generated source archive.
+3. Extract the ZIP and copy the `focusreader.koplugin` folder into KOReader's `plugins` directory. On Kobo, use `.adds/koreader/plugins/`.
+4. Safely eject the e-reader and fully restart KOReader.
+5. Open an EPUB or PDF, then select **Tools → Focus Reader → Start Focus Reader**.
 
-**Tools → Focus Reader**
+The expected Kobo file path is `.adds/koreader/plugins/focusreader.koplugin/main.lua`. When upgrading a manual install, back up and replace only the plugin folder; your separately stored preferences are preserved.
 
-- Start / Stop Focus Reader
-- Reading mode: Highlight Focus / Spotlight Focus: Reading Window / Spotlight Focus: Reading Guide / **Freeform Focus (no text needed)**
-- Highlight Focus: Color, Focused lines (1–5), Tint + underline or Underline only (EPUB/PDF), Word-by-word navigation (no speech)
-- Advance by: One line / Whole focused group / **Whole paragraph** (paragraph mode overrides the fixed line count)
-- Spotlight Focus: Focused lines (1–5), Mask color (Black / White / Custom image / **Current book cover**), Choose custom image from KOReader's screensavers directory, Image background color (Black / White). Transparent PNG areas and unavailable book covers show the selected background color without altering the artwork.
-- Freeform Focus: **Window height** as a percentage of the visible page. The same Spotlight mask color/image settings also apply to Freeform; it always uses a moving window, not the Reading Guide.
+## Using Focus Reader
 
-Use the same buttons or clicker inputs that already turn pages in KOReader. A click normally moves by one visual line; the chosen advancement mode is stored across sessions. Stop Focus Reader to restore normal page turning.
+With a book open, visit **Tools → Focus Reader** to select your reading mode, highlight color, focused line count, advancement style, or Spotlight mask. Your normal page-forward and page-back actions now step through the focused text or reading window. Reaching the end of a page turns the page; moving backward works too. **Stop Focus Reader** restores normal page turning.
 
-### Gesture, Profile and shortcut action
+**Want a one-gesture on/off switch?** In KOReader, open **Settings → Taps and gestures → Gesture manager**, choose a gesture, and assign **Reader → Toggle Focus Reader**. The same action can be used with KOReader Profiles, Quick Menus, and compatible ZenOS shortcuts. Choosing Start/Stop from the Focus Reader menu also returns you directly to your book.
 
-With a book open, go to **Top menu → Settings (gear) → Taps and gestures → Gesture manager**. Choose a gesture, then under **Reader** assign **Toggle Focus Reader**.
+**Custom image backgrounds:** Place an image in KOReader's screensavers directory (on Kobo: `.adds/koreader/screensavers/`), then choose it from **Tools → Focus Reader → Spotlight Focus → Mask color**. Transparent PNGs can use a separately selected black or white backing color. You can also select the current book cover when available. This does not change your device's sleep screen.
 
-The same **Toggle Focus Reader** Dispatcher action can be used by KOReader Profiles, Quick Menus, and compatible ZenOS action shortcuts. Each trigger starts Focus Reader if stopped, or stops it and restores normal page controls if running. Your selected reading mode and preferences remain unchanged. This action is available only while reading a book; restarting KOReader does not automatically start Focus Reader.
+## Current stable release: v1.2.2
 
-## Next stable release: v1.2.2 (pending publication)
+[**Get Focus Reader v1.2.2**](https://github.com/tvventykeys/focusreader.koplugin/releases/tag/v1.2.2) · Released November 16, 2026
 
-- Carries forward the Beta 5 experimental paragraph Reading Window adjustment: a tighter top boundary and a nonflashing whole-viewport UI redraw when stepping between paragraphs.
-- Preserves current main-branch features, including the Toggle Focus Reader gesture/shortcut action.
-- **Hardware verification remains pending:** the adjustment may not eliminate faint descender remnants on every Kobo or Kindle.
-- The previously published v1.2.1 and v1.2.1-beta.5 ZIPs contain Beta 4-era plugin code; the next release must be built and checked from the matching source commit.
+- Includes the Toggle Focus Reader gesture/shortcut action and quick return to your book from Start/Stop.
+- Includes current-book-cover masks, persistent settings menus, paragraph navigation, Freeform Focus, and image-background options.
+- Includes an **experimental** paragraph Reading Window adjustment intended to reduce leftover text fragments on e-ink displays. Physical Kobo/Kindle verification remains pending; some artifacts may persist.
+- **Packaging correction:** The older v1.2.1 and v1.2.1-beta.5 installation ZIPs accidentally contained Beta 4-era plugin code. Use the corrected **v1.2.2** stable ZIP instead.
 
-## What's new in v1.2.1 Beta 4
+For older changes and technical details, see the [changelog](CHANGELOG.md) and [release notes](https://github.com/tvventykeys/focusreader.koplugin/releases).
 
-- Focus Reader setting choices stay open so you can make several adjustments without reopening the menu; Start/Stop still returns to the book.
-- **Current book cover (when available)** is an optional Spotlight / Freeform mask background. The cover is fetched in memory from KOReader; no book image is exported to disk.
-- White and image-based Spotlight masks now request a full reader-viewport UI recomposition on each step to address stale PaperDots pixels. This is **not** an e-ink flashing full refresh, and real Kobo testing is required.
+## Compatibility and limitations
 
-## What's new (unreleased Freeform Focus preview)
+Focus Reader is for **KOReader**, not the standard Kobo reading app. The plugin was developed and tested interactively on a **Kobo Libra Colour**; features and display refresh behavior may differ across KOReader versions, document layouts, Kindle devices, and other e-ink readers.
 
-- Optional image-only-PDF reading mode without OCR, paragraph lookup or text positions.
-- Adjustable percentage-height clear window that advances with existing page-turn controls.
-- Works across PDF page boundaries in either direction; remembers its own window size separately from line/paragraph settings.
-- Full-viewport smooth redraws to reduce stale mask artifacts (hardware verification pending).
+Text-aware Highlight and Spotlight modes require usable text positions. PDF paragraph detection is approximate; image-only PDFs should use **Freeform Focus**, which moves a window by fixed amounts instead of tracking recognized words. Freeform does **not** perform OCR. White/image masks and combinations with other display plugins (including PaperDots) may show device-dependent ghosting.
 
-## What's new (paragraph beta)
+Focus Reader does not provide audio narration, pair Bluetooth devices, or alter the book itself. It is a reading tool, not a medical treatment.
 
-- Paragraph-aware EPUB highlighting and clicker navigation, with variable-length focus windows.
-- Layout-based paragraph fallback for text-based PDFs.
-- Existing line and group navigation remain selectable.
+## Privacy, help, and feedback
 
-## What's new in v1.2.0
+**Fully offline:** Focus Reader includes no network access, analytics, telemetry, accounts, or upload of book text. It saves only local preferences in KOReader's settings. It does not write annotations or modify your books.
 
-- Custom screensaver images as Spotlight masks, including independently selectable black or white backgrounds behind transparent PNG artwork.
-- Reading Window and Reading Guide continue to keep the active lines clear, and previous black/white solid masks are still supported.
-- Word-by-word navigation, block stepping, and highlight/underline choices added during the 1.1 series.
-- More defensive PDF geometry handling during reflow, rotation, and pages with missing selectable text.
+If a feature misbehaves, please report your e-reader model, KOReader version, EPUB/PDF format, steps to reproduce, and any relevant crash-log excerpt. Avoid posting private filenames or copyrighted book pages. Automated Lua tests are available in this repository, but they cannot replace real-device testing.
 
-## Compatibility and known limitations
+See [testing notes](TESTING.md) and [the issue tracker](https://github.com/tvventykeys/focusreader.koplugin/issues).
 
-- **v1.2.0** brings the new image-background options and all v1.1 improvements together. Transparency rendering has been visually verified on a Kobo Libra Colour; PDF compatibility on a Kindle Scribe is still awaiting confirmation.
-- Word navigation groups common contractions and skips standalone whitespace and punctuation; text extraction and geometry can still vary with fonts, document engines, and layouts.
-- Text-based PDF Highlight/Spotlight still relies on MuPDF text geometry. Fixed-layout and reflowed PDF behavior may differ. Freeform Focus works without text geometry, including on scanned/image-only pages; it does not OCR them or follow page content automatically. The reading band covers the reader viewport, not a detected PDF text column.
-- PaperDots can be used alongside Focus Reader; Beta 4 makes an experimental UI redraw change for white/illustrated masks, but physical ghosting and PaperDots' own refresh behavior remain hardware-dependent.
-- Tested interactively on Kobo Libra Colour with KOReader during development; mocked Lua regression tests are not a substitute for testing every document and device.
-- Works with page-turn controls recognized by KOReader; it does not pair/configure Bluetooth hardware or handle audio.
-- No network access, telemetry, or book-text upload.
-
-## Privacy and safety
-
-No network code, telemetry, user identifiers, tokens, analytics, or cloud services. It writes only Focus Reader preferences (including the selected local image path) to KOReader's settings directory. It does not write into the book, save highlights, delete files, or change Bluetooth/audio settings. It's an independent community plugin, not an official KOReader feature.
-
-## Feedback and troubleshooting
-
-If Focus Reader does not appear, confirm the exact `focusreader.koplugin/main.lua` path, restart KOReader and open an EPUB. If you see an error, include the KOReader version, device, book format, reproduction steps, and the relevant KOReader crash-log excerpt. Please avoid posting copyrighted book pages or personal filenames if you don't want them public.
-
-## Development and releases
-
-The installable release ZIP contains `focusreader.koplugin/`. Source and tests are here in this repository. The `tests/` directory provides mocked Lua checks; those **do not replace hardware tests**. See [TESTING.md](TESTING.md) and [CHANGELOG.md](CHANGELOG.md).
-
-License: MIT. This project is not affiliated with KOReader or Kobo.
+**MIT licensed.** Independent community plugin; not affiliated with KOReader or Kobo.
