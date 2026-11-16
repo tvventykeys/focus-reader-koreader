@@ -1,4 +1,5 @@
 name: Focus Reader Lua checks
+
 on:
   pull_request:
     branches:
@@ -10,6 +11,14 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: focus-reader-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   mocked-koreader:
     runs-on: ubuntu-latest
@@ -21,23 +30,88 @@ jobs:
         run: lua5.1 tests/test_plugin.lua
       - name: Geometry checks
         run: lua5.1 tests/test_logic.lua
-      - name: Package release candidate
-        run: python3 scripts/build_release.py
-      - name: Verify packaged filename and artifact count
+      - name: Release verifier regression tests
+        run: python3 -m unittest discover -s tests -p 'test_release_verify.py' -v
+      - name: Require release tag to match VERSION and checked-out commit
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          version = Path("VERSION").read_text().strip()
-          files = list(Path("dist/release").glob("*.zip"))
-          assert len(files) == 1, files
-          expected = f"Focus-Reader-{version}-koplugin.zip"
-          if __import__("os").environ.get("GITHUB_REF_TYPE") == "tag":
-              expected = f"Focus-Reader-{__import__('os').environ['GITHUB_REF_NAME']}-koplugin.zip"
-          assert files[0].name == expected, (files, expected)
-          print("PASS:", expected)
-          PY
-      - uses: actions/upload-artifact@v4
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$(tr -d '\r\n' < VERSION)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Build versioned release ZIP from checked-out source
+        run: python3 scripts/build_release.py
+      - name: Verify ZIP contents, version, and SHA256 against source
+        run: python3 scripts/verify_release.py
+      - name: Upload verified ZIP and checksum
+        uses: actions/upload-artifact@v4
         with:
-          name: focus-reader-development
-          path: dist/release/*.zip
+          name: focus-reader-${{ github.sha }}
+          path: |
+            dist/release/*.zip
+            dist/release/*.sha256
           if-no-files-found: error
+          retention-days: 30
+
+  publish-release:
+    name: Publish only verified tag artifacts
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: mocked-koreader
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the exact verified CI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: focus-reader-${{ github.sha }}
+          path: dist/release
+      - name: Reverify downloaded release assets against tagged source
+        run: python3 scripts/verify_release.py
+      - name: Publish a new release without replacing existing assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::Release $tag already exists; refusing to replace it."
+            exit 1
+          fi
+          if [[ "$tag" == *-* ]]; then
+            gh release create "$tag" dist/release/*.zip dist/release/*.sha256 \
+              --verify-tag --title "Focus Reader $tag" \
+              --notes "Automated prerelease built and verified from tag $tag. Hardware compatibility still requires device testing." \
+              --prerelease --latest=false
+          else
+            gh release create "$tag" dist/release/*.zip dist/release/*.sha256 \
+              --verify-tag --title "Focus Reader $tag" \
+              --generate-notes --latest
+          fi
+      - name: Verify published asset digest matches the checked ZIP
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view "$GITHUB_REF_NAME" --json assets,tagName,isPrerelease \
+            > release-info.json
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          data = json.loads(Path('release-info.json').read_text())
+          tag = os.environ['GITHUB_REF_NAME']
+          assert data['tagName'] == tag
+          assert data['isPrerelease'] == ('-' in tag)
+          expected = {}
+          for p in Path('dist/release').glob('*.zip'):
+              expected[p.name] = 'sha256:' + hashlib.sha256(p.read_bytes()).hexdigest()
+          assert len(expected) == 1
+          assets = {a['name']: a for a in data['assets']}
+          assert set(assets) == set(expected) | {next(iter(expected)) + '.sha256'}, assets
+          for filename, digest in expected.items():
+              assert assets[filename].get('digest') == digest, (filename, assets[filename])
+          print('PASS: published ZIP digest matches validated source build')
+          PY
