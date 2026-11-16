@@ -802,6 +802,9 @@ pdfdoc.getTextFromPositions = function()
 end
 pdf:setStyle('freeform')
 pdf:setFreeformHeight(25)
+pdf:setFreeformOverlap(0) -- Isolate legacy geometry from earlier menu tests.
+check(pdf.freeform_overlap==0 and stored.freeform_overlap==0,
+    'Freeform zero overlap is saved and retains legacy movement')
 check(pdf.freeform_height==25 and stored.freeform_height==25,
     'Freeform height setting is separate and persists')
 pdf:setSpotlightMaskColor('black')
@@ -820,7 +823,6 @@ check(#blackout==1 and blackout[1].y==225 and blackout[1].h==675
     and blackout[1].color=='BLACK',
     'Freeform masks below the clear first band even with zero text')
 pdfpaging:onGotoViewRel(1)
-print('DEBUG FREEFORM', 'index', tostring(pdf.freeform_index), 'y', tostring(pdf:getSlot().y), 'overlap', tostring(pdf.freeform_overlap), 'height', tostring(pdf.freeform_height), 'stride', tostring(dofile('focusreader.koplugin/logic.lua').freeformStride(pdf.freeform_area, pdf.freeform_height, pdf.freeform_overlap)))
 check(pdf.freeform_index==2 and pdf:getSlot().y==225,
     'clicker advances one geometric window')
 blackout={}
