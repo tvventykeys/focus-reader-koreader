@@ -8,12 +8,9 @@ Focus Reader is a free, offline KOReader plugin that moves a reading highlight o
 
 ## See it in action
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/0468ced6-1046-4081-a760-f40ad202aabe" alt="Focus Reader with a custom Spotlight background, first Kobo screenshot" width="46%" />
-  <img src="https://github.com/user-attachments/assets/5bbbafb5-e91a-4bd4-bbe8-e53296e41cc8" alt="Focus Reader with an alternative Spotlight background, second Kobo screenshot" width="46%" />
-</p>
+![Side-by-side Focus Reader modes: Spotlight Focus with book-cover background and Highlight Focus with yellow highlighting](https://github.com/user-attachments/assets/5cbf405e-5908-49bc-aadc-b8dc4caf6e86)
 
-*Two examples of Focus Reader's customizable Spotlight backgrounds. Both screenshots were shared with the v1.2.0 release.*
+*Left: Spotlight Focus with the current book cover as a background. Right: Highlight Focus with a yellow line highlight. Both examples are from KOReader.*
 
 ## Choose how you want to read
 
