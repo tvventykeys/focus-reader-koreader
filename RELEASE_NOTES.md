@@ -1,31 +1,27 @@
-# Focus Reader v1.2.0 — Custom Backgrounds & Better Focus
+# Focus Reader v1.2.3-beta.1 — Cleaner Menus
 
-A feature-packed stable update to the offline KOReader reading-focus plugin.
+**Beta preview for KOReader testers.** The current recommended stable release remains v1.2.2.
 
-## Highlights
+## What's improved
 
-- **Custom image backgrounds in Spotlight Focus:** Choose a local image from KOReader's `screensavers` folder for Reading Window or Reading Guide.
-- **Black or white behind transparent PNGs:** Transparent pixels show your selected backing color while the illustration stays intact. Both choices were visually tested on a Kobo Libra Colour.
-- **All the original masks:** Solid black and solid white remain available, and the active reading lines are left readable.
-- **More ways to follow text:** Word-by-word navigation without audio, more robust punctuation/contraction handling, and customizable line/block stepping.
-- **EPUB/PDF underline options:** Underline-only highlighting, plus PDF tint-and-underline where text geometry is available.
-- **More robust PDFs:** Defensive behavior if text positions disappear during rotation, reflow, or diagram-heavy pages, restoring normal page turning rather than leaving a focus session stuck.
+- **Three main options:** Start/Stop Focus Reader, Focus mode, and Settings.
+- **Settings for every mode:** Configure Highlight, Spotlight or Freeform without switching away from the current mode.
+- **More logical submenus:** Advance by lives inside Highlight and Spotlight. Freeform has its own window-height control.
+- **Less clutter:** Custom-image backing color is grouped inside mask options; the word diagnostic is under Highlight → Advanced.
+- **Everything else preserved:** Color highlighting, Spotlight, scanned-PDF Freeform, paragraph/word stepping, backgrounds, saved preferences and page controls.
+
+## Please test on Kobo
+
+1. Open a book and choose **Tools → Focus Reader**. Confirm the three-item main menu.
+2. Set a mode, then change settings in a different mode's folder. Confirm the selected mode does not change.
+3. Confirm **Start/Stop** returns immediately to the book, and colors, line counts, masks and backgrounds still work.
+4. Try an existing Bluetooth page-turner and, if available, the **Toggle Focus Reader** gesture action.
+5. Report your device, KOReader version, and any menu, ghosting or page-turn problems.
+
+**Important:** This beta is not yet verified on physical devices. The gesture-action discoverability issue is not claimed fixed by this menu-only update.
 
 ## Installation
 
-1. Download **Focus-Reader-v1.2.0-koplugin.zip** from this release's Assets section (not GitHub's Source code ZIP).
-2. Fully exit KOReader.
-3. Extract the archive and replace `.adds/koreader/plugins/focusreader.koplugin` on Kobo with the included `focusreader.koplugin` folder. Back up the previous folder first.
-4. Start KOReader and open **Tools → Focus Reader**.
+Use the **installable ZIP attached to this beta release** (not GitHub's source-code ZIP). Close KOReader, back up the old `focusreader.koplugin` folder, replace that folder in `.adds/koreader/plugins/` on Kobo, and fully restart KOReader. Your saved preferences live outside the plugin folder.
 
-Your saved settings live outside the plugin folder and should remain intact.
-
-## Using custom backgrounds
-
-Go to **Spotlight Focus → Mask color → Choose custom image...** and pick an image in KOReader's screensavers directory. Then select **Spotlight Focus → Image background color → Black** or **White**. The background only covers masked parts of the reading page; the current reading lines remain visible.
-
-## Compatibility notes
-
-- Alpha compositing for transparent PNG custom images has been visually verified on **Kobo Libra Colour**.
-- Text-based PDF support depends on KOReader's available text geometry. Kindle Scribe landscape/reflow verification is **still pending**. Scanned PDFs are not OCR'd.
-- This is a community plugin and is not affiliated with KOReader or Kobo. No internet connection, telemetry, or book-text upload is required.
+The beta ZIP is generated and integrity-verified by GitHub Actions from the exact tagged source commit; do not upload a manually assembled ZIP in its place.
