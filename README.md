@@ -33,7 +33,7 @@ Focus Reader does **not** require a network connection, create annotations, read
 ## Installation
 
 1. Install KOReader first. This plugin does not work in the stock Kobo reader app.
-2. Download the **Focus-Reader-v1.2.0-koplugin.zip** release asset (not GitHub's automatically generated source ZIP).
+2. Download the installable ZIP from the [latest stable release](https://github.com/tvventykeys/focusreader.koplugin/releases/latest) (not GitHub's automatically generated source ZIP).
 3. Extract it. Copy the **`focusreader.koplugin`** folder itself into KOReader's `plugins/` directory. Do not nest the directory inside another ZIP folder.
    - **Kobo:** `.adds/koreader/plugins/` on the connected e-reader.
    - **Other devices:** find the `plugins` directory inside your KOReader data directory; its location varies.
@@ -62,6 +62,13 @@ Use the same buttons or clicker inputs that already turn pages in KOReader. A cl
 With a book open, go to **Top menu → Settings (gear) → Taps and gestures → Gesture manager**. Choose a gesture, then under **Reader** assign **Toggle Focus Reader**.
 
 The same **Toggle Focus Reader** Dispatcher action can be used by KOReader Profiles, Quick Menus, and compatible ZenOS action shortcuts. Each trigger starts Focus Reader if stopped, or stops it and restores normal page controls if running. Your selected reading mode and preferences remain unchanged. This action is available only while reading a book; restarting KOReader does not automatically start Focus Reader.
+
+## Next stable release: v1.2.2 (pending publication)
+
+- Carries forward the Beta 5 experimental paragraph Reading Window adjustment: a tighter top boundary and a nonflashing whole-viewport UI redraw when stepping between paragraphs.
+- Preserves current main-branch features, including the Toggle Focus Reader gesture/shortcut action.
+- **Hardware verification remains pending:** the adjustment may not eliminate faint descender remnants on every Kobo or Kindle.
+- The previously published v1.2.1 and v1.2.1-beta.5 ZIPs contain Beta 4-era plugin code; the next release must be built and checked from the matching source commit.
 
 ## What's new in v1.2.1 Beta 4
 
