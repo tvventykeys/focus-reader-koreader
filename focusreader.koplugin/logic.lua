@@ -174,7 +174,7 @@ end
 
 -- Unlike fixed 1–5-line windows, a paragraph can span any number of
 -- visible lines. Clamp the active rectangle to its own column/page area.
-function Logic.slotRange(lines, first_index, last_index)
+function Logic.slotRange(lines, first_index, last_index, top_padding)
     if #lines == 0 or not first_index or not last_index then return nil end
     local first = lines[first_index]
     if not first then return nil end
@@ -183,7 +183,12 @@ function Logic.slotRange(lines, first_index, last_index)
         if lines[i].area ~= first.area then break end
         last = lines[i]
     end
-    local top = math.max(first.area.y, first.y - 2)
+    -- Keep the original two-pixel allowance in other modes. For paragraph
+    -- Spotlight Reading Window only, close the clear gap above the first line
+    -- without masking any of the measured text box.
+    top_padding = type(top_padding) == "number"
+        and math.max(0, math.min(2, top_padding)) or 2
+    local top = math.max(first.area.y, first.y - top_padding)
     local bottom = math.min(first.area.y+first.area.h, last.y+last.h+2)
     return {x=first.area.x, y=top, w=first.area.w,
         h=math.max(0,bottom-top), area=first.area}

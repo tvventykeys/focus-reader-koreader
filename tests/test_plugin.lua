@@ -712,8 +712,22 @@ check(page==1 and instance.index==7,
 roll:onGotoViewRel(-1)
 check(instance.index==1,'reverse clicker returns to first EPUB paragraph')
 instance:setStyle('mask')
+instance:setSpotlightLayout('guide')
 check(instance:getSlot().h==first_para.h,
-    'Spotlight also focuses an entire paragraph')
+    'Spotlight Reading Guide retains original paragraph bounds')
+instance:setSpotlightLayout('window')
+local clean_window = instance:getSlot()
+check(clean_window.y == instance.lines[instance.index].y,
+    'paragraph Reading Window omits unnecessary top padding')
+check(clean_window.h == first_para.h - 2,
+    'paragraph Reading Window retains all measured text lines')
+roll:onGotoViewRel(1)
+check(instance.index == 7, 'paragraph next still advances in Reading Window')
+check(dirty[#dirty].mode == 'ui' and dirty[#dirty].region == nil,
+    'paragraph Reading Window requests nonflashing viewport redraw')
+roll:onGotoViewRel(-1)
+check(instance.index == 1, 'paragraph reverse still navigates properly')
+instance:setSpotlightLayout('guide')
 instance:setStepMode('line')
 check(instance.step_mode=='line' and stored.step_mode=='line',
     'line mode remains selectable after paragraph mode')
