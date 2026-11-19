@@ -797,6 +797,21 @@ function FocusReader:usesOverlayHighlight()
     return self.style == "color" and (self.ui.paging or self.pdf_highlight_style == "underline")
 end
 
+-- Bookends is another ReaderView module. Its text may already have been
+-- painted when our opaque Spotlight/Freeform mask runs. Repaint its public
+-- view module last to keep the user's Bookends layout visible. No dependency
+-- on Bookends internals and no change when it is absent or disabled.
+function FocusReader:paintBookendsOverlay(bb, x, y)
+    local modules = self.view and self.view.view_modules
+    local bookends = modules and modules.bookends
+    if bookends and bookends ~= self and bookends.enabled
+            and not bookends._format_hidden
+            and type(bookends.paintTo) == "function" then
+        -- Third-party plugin errors must not interrupt reading.
+        pcall(bookends.paintTo, bookends, bb, x, y)
+    end
+end
+
 function FocusReader:paintTo(bb, x, y)
     if not self.supported or not self.enabled then return end
     if self.style == "freeform" then
@@ -811,6 +826,7 @@ function FocusReader:paintTo(bb, x, y)
         self:shade(bb, x + area.x, y + area.y, area.w, top - area.y)
         self:shade(bb, x + area.x, y + bottom,
             area.w, area.y + area.h - bottom)
+        self:paintBookendsOverlay(bb, x, y)
         return
     end
     if self:usesOverlayHighlight() then
@@ -881,6 +897,7 @@ function FocusReader:paintTo(bb, x, y)
             self:shade(bb, x + area.x, y + area.y, area.w, area.h)
         end
     end
+    self:paintBookendsOverlay(bb, x, y)
 end
 
 -- A *single* medium-fidelity update for the union of the old and new focus
