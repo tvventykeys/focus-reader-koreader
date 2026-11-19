@@ -907,4 +907,36 @@ check(pdf.enabled and #pdf.lines==2,
 pdf:stop()
 check(pdfpaging.onGotoViewRel==pdfturn,
     'existing PDF turning restored after live mode changes')
+-- Bookends stays above both opaque focus modes, without being required.
+local bookends_paints = 0
+local bookends = {
+    enabled = true,
+    paintTo = function()
+        bookends_paints = bookends_paints + 1
+    end,
+}
+pdfview.view_modules = {bookends = bookends}
+pdf:setStyle('freeform')
+pdf:start()
+local bookends_bb = {paintRect = function() end}
+pdf:paintTo(bookends_bb, 0, 0)
+check(bookends_paints == 1,
+    'Bookends is repainted above Freeform masks')
+pdf:stop()
+pdf:setStyle('mask')
+pdf:start()
+pdf:paintTo(bookends_bb, 0, 0)
+check(bookends_paints == 2,
+    'Bookends is repainted above Spotlight masks')
+bookends.enabled = false
+pdf:paintTo(bookends_bb, 0, 0)
+check(bookends_paints == 2,
+    'disabled Bookends is not repainted')
+bookends.enabled = true
+bookends.paintTo = function() error('simulated Bookends failure') end
+local ok = pcall(pdf.paintTo, pdf, bookends_bb, 0, 0)
+check(ok, 'Bookends errors cannot break Focus Reader paint')
+pdf:stop()
+pdfview.view_modules = nil
+
 print('PASS: '..checks..' mocked KOReader checks')
